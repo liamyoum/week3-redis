@@ -10,6 +10,7 @@ services:
       MINI_REDIS_MONGO_COLLECTION: products
       MINI_REDIS_SNAPSHOT_PATH: /app/data/snapshot.json
       MINI_REDIS_AOF_PATH: /app/data/appendonly.aof.jsonl
+      MINI_REDIS_ENABLE_DEMO_CRASH: "true"
       MINI_REDIS_STOREFRONT_ORIGIN_DELAY_MS: "0"
     ports:
       - "8000:8000"

@@ -1,9 +1,23 @@
+const persistenceDemoStorageKey = "mini-redis-persistence-demo";
+
 const state = {
   products: [],
   selectedProductId: null,
   sessionId: globalThis.crypto?.randomUUID?.() ?? `demo-${Date.now()}`,
   holdTimer: null,
   events: [],
+  persistenceDemo: {
+    pollTimer: null,
+    phase: "idle",
+    apiReachable: true,
+    awaitingRecovery: false,
+    exists: false,
+    crashEnabled: false,
+    currentValue: null,
+    currentUpdatedAtMs: null,
+    lastWrittenValue: null,
+    lastWrittenAtMs: null,
+  },
 };
 
 const cacheStatusLabel = {
@@ -54,16 +68,43 @@ const nodes = {
   snapshotStatus: document.getElementById("snapshot-status"),
   aofStatus: document.getElementById("aof-status"),
   currentStock: document.getElementById("current-stock"),
-  stateItems: document.getElementById("state-items"),
-  snapshotJson: document.getElementById("snapshot-json"),
-  aofJson: document.getElementById("aof-json"),
   eventLog: document.getElementById("event-log"),
+  snapshotFileStatus: document.getElementById("snapshot-file-status"),
+  snapshotFileUpdated: document.getElementById("snapshot-file-updated"),
+  snapshotFileDetail: document.getElementById("snapshot-file-detail"),
+  aofFileStatus: document.getElementById("aof-file-status"),
+  aofFileUpdated: document.getElementById("aof-file-updated"),
+  aofFileDetail: document.getElementById("aof-file-detail"),
+  persistenceFlowTitle: document.getElementById("persistence-flow-title"),
+  persistenceFlowDetail: document.getElementById("persistence-flow-detail"),
+  persistenceFlowNote: document.getElementById("persistence-flow-note"),
+  persistenceDemoStatus: document.getElementById("persistence-demo-status"),
+  persistenceDemoDetail: document.getElementById("persistence-demo-detail"),
+  persistenceDemoLastWritten: document.getElementById("persistence-demo-last-written"),
+  persistenceDemoLastWrittenAt: document.getElementById("persistence-demo-last-written-at"),
+  persistenceDemoCurrentValue: document.getElementById("persistence-demo-current-value"),
+  persistenceDemoCurrentUpdated: document.getElementById("persistence-demo-current-updated"),
   consoleKey: document.getElementById("console-key"),
   consoleNamespace: document.getElementById("console-namespace"),
   consoleValue: document.getElementById("console-value"),
   consoleTtl: document.getElementById("console-ttl"),
   consoleOutput: document.getElementById("console-output"),
 };
+
+function parsePayload(text) {
+  if (!text) {
+    return null;
+  }
+  try {
+    return JSON.parse(text);
+  } catch {
+    const trimmed = text.trim();
+    if (trimmed.startsWith("<")) {
+      return { detail: "서버가 JSON이 아닌 오류 화면을 반환했습니다." };
+    }
+    return { detail: trimmed };
+  }
+}
 
 async function api(path, options = {}) {
   const response = await fetch(`${apiBase}${path}`, {
@@ -74,8 +115,7 @@ async function api(path, options = {}) {
     ...options,
   });
 
-  const text = await response.text();
-  const payload = text ? JSON.parse(text) : null;
+  const payload = parsePayload(await response.text());
   if (!response.ok) {
     throw new Error(payload?.detail ?? `Request failed: ${response.status}`);
   }
@@ -130,6 +170,172 @@ function renderProducts() {
       renderProducts();
     });
     nodes.productGrid.appendChild(card);
+  }
+}
+
+function loadPersistenceDemoMemory() {
+  try {
+    const raw = window.localStorage.getItem(persistenceDemoStorageKey);
+    if (!raw) {
+      return;
+    }
+    const payload = JSON.parse(raw);
+    if (typeof payload.lastWrittenValue === "string") {
+      state.persistenceDemo.lastWrittenValue = payload.lastWrittenValue;
+    }
+    if (typeof payload.lastWrittenAtMs === "number") {
+      state.persistenceDemo.lastWrittenAtMs = payload.lastWrittenAtMs;
+    }
+  } catch {
+    window.localStorage?.removeItem?.(persistenceDemoStorageKey);
+  }
+}
+
+function savePersistenceDemoMemory() {
+  try {
+    window.localStorage.setItem(
+      persistenceDemoStorageKey,
+      JSON.stringify({
+        lastWrittenValue: state.persistenceDemo.lastWrittenValue,
+        lastWrittenAtMs: state.persistenceDemo.lastWrittenAtMs,
+      }),
+    );
+  } catch {
+    // localStorage is best-effort only.
+  }
+}
+
+function formatTimestamp(ms) {
+  if (typeof ms !== "number" || !Number.isFinite(ms)) {
+    return "-";
+  }
+  return new Date(ms).toLocaleString("ko-KR", { hour12: false });
+}
+
+function formatBytes(bytes) {
+  if (typeof bytes !== "number" || !Number.isFinite(bytes) || bytes < 0) {
+    return "-";
+  }
+  if (bytes < 1024) {
+    return `${bytes} B`;
+  }
+  if (bytes < 1024 * 1024) {
+    return `${(bytes / 1024).toFixed(1)} KB`;
+  }
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function renderPersistenceDemo() {
+  const demo = state.persistenceDemo;
+  let status = "기록 없음";
+  let detail = "먼저 `복구용 데이터 생성` 버튼으로 기준값을 만드세요.";
+
+  if (!demo.crashEnabled) {
+    detail = "강제 종료 버튼은 docker compose 환경에서만 동작하도록 비활성화되어 있습니다.";
+  }
+
+  if (demo.phase === "crashing") {
+    status = "API 종료 요청됨";
+    detail = "응답을 돌려준 뒤 API 프로세스를 비정상 종료하는 중입니다.";
+  } else if (!demo.apiReachable || demo.phase === "down") {
+    status = "API 중단됨";
+    detail = "프론트는 열려 있습니다. 터미널에서 `docker compose up -d api` 를 실행하면 자동으로 복구를 확인합니다.";
+  } else if (demo.phase === "recovered") {
+    status = "복구 확인";
+    detail = "마지막으로 쓴 값이 재시작 후에도 그대로 남아 있습니다.";
+  } else if (demo.phase === "written") {
+    status = "기록 완료";
+    detail = "현재 값이 메모리와 AOF에 반영된 상태입니다. 이제 강제 종료를 눌러도 됩니다.";
+  } else if (demo.exists) {
+    status = "서버 기록 존재";
+    detail = "서버에서 데모용 영속성 값을 확인했습니다.";
+  }
+
+  nodes.persistenceDemoStatus.textContent = status;
+  nodes.persistenceDemoDetail.textContent = detail;
+  nodes.persistenceDemoLastWritten.textContent = demo.lastWrittenValue ?? "-";
+  nodes.persistenceDemoLastWrittenAt.textContent = demo.lastWrittenAtMs
+    ? `브라우저 기준 ${formatTimestamp(demo.lastWrittenAtMs)}`
+    : "브라우저에 저장된 기준값이 없습니다.";
+  nodes.persistenceDemoCurrentValue.textContent = demo.exists ? demo.currentValue ?? "-" : "-";
+  nodes.persistenceDemoCurrentUpdated.textContent = demo.exists && demo.currentUpdatedAtMs
+    ? `서버 마지막 업데이트 ${formatTimestamp(demo.currentUpdatedAtMs)}`
+    : demo.apiReachable
+      ? "아직 서버에 저장된 데모 값이 없습니다."
+      : "API가 내려가 있어 현재 서버 값을 읽을 수 없습니다.";
+}
+
+function startPersistenceDemoPolling() {
+  if (state.persistenceDemo.pollTimer !== null) {
+    return;
+  }
+  state.persistenceDemo.pollTimer = window.setInterval(() => {
+    void fetchPersistenceDemoStatus({ silent: true });
+  }, 2000);
+}
+
+function stopPersistenceDemoPolling() {
+  if (state.persistenceDemo.pollTimer === null) {
+    return;
+  }
+  window.clearInterval(state.persistenceDemo.pollTimer);
+  state.persistenceDemo.pollTimer = null;
+}
+
+function applyPersistenceDemoPayload(payload) {
+  state.persistenceDemo.apiReachable = true;
+  state.persistenceDemo.exists = payload.exists;
+  state.persistenceDemo.crashEnabled = Boolean(payload.crash_enabled);
+  state.persistenceDemo.currentValue = payload.value ?? null;
+  state.persistenceDemo.currentUpdatedAtMs = payload.updated_at_ms ?? null;
+}
+
+async function fetchPersistenceDemoStatus({ silent = false } = {}) {
+  try {
+    const payload = await api("/admin/persistence-demo");
+    const wasUnreachable = !state.persistenceDemo.apiReachable;
+    const wasAwaitingRecovery = state.persistenceDemo.awaitingRecovery;
+
+    applyPersistenceDemoPayload(payload);
+
+    if (!payload.exists && state.persistenceDemo.phase !== "recovered") {
+      state.persistenceDemo.phase = "idle";
+    } else if (
+      payload.exists &&
+      state.persistenceDemo.lastWrittenValue &&
+      payload.value === state.persistenceDemo.lastWrittenValue &&
+      wasAwaitingRecovery
+    ) {
+      state.persistenceDemo.phase = "recovered";
+      state.persistenceDemo.awaitingRecovery = false;
+      pushEvent("AOF 복구 확인", `${payload.value} 값이 재시작 후에도 그대로 남았습니다.`);
+    } else if (payload.exists && state.persistenceDemo.phase !== "recovered") {
+      state.persistenceDemo.phase = "written";
+    }
+
+    renderPersistenceDemo();
+    stopPersistenceDemoPolling();
+
+    if (wasUnreachable) {
+      await Promise.allSettled([loadProducts(), refreshState()]);
+      if (!wasAwaitingRecovery && !silent) {
+        pushEvent("API 재연결", "API가 다시 응답하기 시작했습니다.");
+      }
+    }
+
+    return payload;
+  } catch {
+    const wasReachable = state.persistenceDemo.apiReachable;
+    state.persistenceDemo.apiReachable = false;
+    if (state.persistenceDemo.awaitingRecovery || state.persistenceDemo.phase === "crashing") {
+      state.persistenceDemo.phase = "down";
+      startPersistenceDemoPolling();
+    }
+    renderPersistenceDemo();
+    if (wasReachable && !silent) {
+      pushEvent("API 중단 감지", "프론트는 살아 있지만 API는 현재 응답하지 않습니다.");
+    }
+    return null;
   }
 }
 
@@ -317,30 +523,74 @@ async function refreshState() {
     ? `AOF ${payload.aof_size_bytes} bytes · 스냅샷 이후 변경분`
     : "AOF 없음";
 
-  const items = [
-    ["원본 데이터", sourceLabel[payload.origin_source] ?? payload.origin_source],
-    ["원본 지연", `${payload.origin_delay_ms} ms`],
-    ["상품 수", String(payload.product_count)],
-    ["Snapshot 경로", payload.snapshot_path ?? "-"],
-    ["AOF 경로", payload.aof_path ?? "-"],
-  ];
-
-  nodes.stateItems.innerHTML = items
-    .map(
-      ([label, value]) => `
-        <article class="state-item">
-          <span class="hint">${label}</span>
-          <strong>${value}</strong>
-        </article>
-      `,
-    )
-    .join("");
-  nodes.snapshotJson.textContent = payload.snapshot_payload
-    ? JSON.stringify(payload.snapshot_payload, null, 2)
+  nodes.snapshotFileStatus.textContent = payload.snapshot_exists ? "저장된 Snapshot 있음" : "아직 Snapshot 없음";
+  nodes.snapshotFileUpdated.textContent = payload.snapshot_exists
+    ? `마지막 저장 ${formatTimestamp(payload.snapshot_updated_at_ms)}`
     : "아직 스냅샷을 저장하지 않았습니다.";
-  nodes.aofJson.textContent = payload.aof_events.length > 0
-    ? payload.aof_events.map((entry) => JSON.stringify(entry, null, 2)).join("\n\n")
-    : "아직 AOF 이벤트가 없습니다.";
+  nodes.snapshotFileDetail.textContent = payload.snapshot_exists
+    ? `${formatBytes(payload.snapshot_size_bytes)} · ${payload.snapshot_path ?? "-"}`
+    : payload.snapshot_path ?? "Snapshot 경로가 설정되지 않았습니다.";
+
+  nodes.aofFileStatus.textContent = payload.aof_exists
+    ? payload.aof_size_bytes > 0
+      ? "변경분 기록 중"
+      : "AOF 파일 준비됨"
+    : "아직 AOF 없음";
+  nodes.aofFileUpdated.textContent = payload.aof_exists
+    ? `마지막 기록 ${formatTimestamp(payload.aof_updated_at_ms)}`
+    : "아직 AOF 파일이 생성되지 않았습니다.";
+  nodes.aofFileDetail.textContent = payload.aof_exists
+    ? `${formatBytes(payload.aof_size_bytes)} · ${payload.aof_path ?? "-"}`
+    : payload.aof_path ?? "AOF 경로가 설정되지 않았습니다.";
+
+  nodes.persistenceFlowTitle.textContent = "Snapshot -> AOF Replay";
+  nodes.persistenceFlowDetail.textContent = payload.snapshot_exists
+    ? "시작 시 Snapshot을 먼저 불러오고, 그 뒤 AOF를 replay 해서 최신 상태를 맞춥니다."
+    : "아직 Snapshot이 없어도, 남아 있는 AOF 변경분만으로 마지막 쓰기를 복구할 수 있습니다.";
+  nodes.persistenceFlowNote.textContent = "종료 시 Snapshot 저장 · 비정상 종료 시 AOF가 마지막 변경분을 살립니다.";
+}
+
+async function writePersistenceDemo() {
+  const payload = await api("/admin/persistence-demo/write", { method: "POST" });
+  applyPersistenceDemoPayload(payload);
+  state.persistenceDemo.phase = "written";
+  state.persistenceDemo.awaitingRecovery = false;
+  state.persistenceDemo.lastWrittenValue = payload.value ?? null;
+  state.persistenceDemo.lastWrittenAtMs = payload.updated_at_ms ?? Date.now();
+  savePersistenceDemoMemory();
+  stopPersistenceDemoPolling();
+  renderPersistenceDemo();
+  await refreshState();
+  pushEvent("복구용 쓰기", `${payload.namespace}/${payload.key} -> ${payload.value}`);
+}
+
+async function crashApi() {
+  if (!state.persistenceDemo.crashEnabled) {
+    throw new Error("이 환경에서는 강제 종료 데모가 비활성화되어 있습니다.");
+  }
+  if (!state.persistenceDemo.lastWrittenValue) {
+    throw new Error("먼저 `복구용 데이터 생성` 버튼으로 기준값을 쓰세요.");
+  }
+
+  const payload = await api("/admin/persistence-demo/crash", { method: "POST" });
+  state.persistenceDemo.phase = "crashing";
+  state.persistenceDemo.awaitingRecovery = true;
+  renderPersistenceDemo();
+  pushEvent(
+    "API 강제 종료",
+    `${payload.delay_ms}ms 뒤 비정상 종료 예정 · 다시 올릴 때는 docker compose up -d api`,
+  );
+
+  window.setTimeout(() => {
+    void fetchPersistenceDemoStatus({ silent: true });
+  }, payload.delay_ms + 450);
+}
+
+async function checkPersistenceDemo() {
+  const payload = await fetchPersistenceDemoStatus();
+  if (payload?.exists) {
+    pushEvent("복구 상태 조회", `${payload.namespace}/${payload.key} -> ${payload.value}`);
+  }
 }
 
 async function consoleAction(action) {
@@ -389,6 +639,9 @@ function attachEvents() {
   document.getElementById("invalidate-product").addEventListener("click", () => wrapAction(invalidateProduct));
   document.getElementById("save-snapshot").addEventListener("click", () => wrapAction(saveSnapshot));
   document.getElementById("refresh-state").addEventListener("click", () => wrapAction(refreshState));
+  document.getElementById("write-persistence-demo").addEventListener("click", () => wrapAction(writePersistenceDemo));
+  document.getElementById("crash-api").addEventListener("click", () => wrapAction(crashApi));
+  document.getElementById("check-persistence-demo").addEventListener("click", () => wrapAction(checkPersistenceDemo));
   document.querySelectorAll(".console-button").forEach((button) => {
     button.addEventListener("click", () => wrapAction(() => consoleAction(button.dataset.action)));
   });
@@ -405,10 +658,12 @@ async function wrapAction(fn) {
 }
 
 async function bootstrap() {
+  loadPersistenceDemoMemory();
+  renderPersistenceDemo();
   attachEvents();
-  await loadProducts();
-  await refreshState();
   pushEvent("세션 시작", `데모 세션 ${state.sessionId.slice(0, 8)} 시작`);
+
+  await Promise.allSettled([loadProducts(), refreshState(), fetchPersistenceDemoStatus({ silent: true })]);
 }
 
 bootstrap().catch((error) => {
