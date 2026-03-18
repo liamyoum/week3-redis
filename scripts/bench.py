@@ -40,8 +40,20 @@ def time_requests(url: str, repeats: int) -> list[float]:
     return durations
 
 
-def summarize(label: str, durations: list[float], hit_ratio: float | None = None) -> BenchmarkResult:
+def summarize(
+    label: str,
+    durations: list[float],
+    hit_ratio: float | None = None,
+) -> BenchmarkResult:
     # 여러 요청의 개별 지연 시간을 합계/평균 중심 결과로 요약한다.
+    return BenchmarkResult(
+        label=label,
+        requests=len(durations),
+        total_ms=sum(durations),
+        average_ms=statistics.fmean(durations),
+        hit_ratio=hit_ratio,
+    )
+
     return BenchmarkResult(
         label=label,
         requests=len(durations),
