@@ -1,6 +1,7 @@
 import threading
 import time
 from collections.abc import Callable
+from typing import Any
 from typing import Literal
 
 from app.domain.contracts import HashTableProtocol
@@ -18,11 +19,13 @@ class StoreEngine:
         self,
         table: HashTableProtocol[StoreRecord],
         now_ms: Callable[[], int] | None = None,
+        mutation_logger: Callable[[dict[str, Any]], None] | None = None,
     ) -> None:
         self._table = table
         self._now_ms = now_ms or self._default_now_ms
         self._namespace_versions: dict[str, int] = {}
         self._lock = threading.RLock()
+        self._mutation_logger = mutation_logger
 
     def set(
         self,
@@ -51,6 +54,7 @@ class StoreEngine:
                 updated_at_ms=now_ms,
             )
             self._table.put(storage_key, record)
+            self._emit_upsert(record)
             return record
 
     def get(self, key: str, namespace: str = "default") -> StoreRecord | None:
@@ -69,7 +73,10 @@ class StoreEngine:
             _, state = self._read_record(storage_key, namespace, now_ms)
             if state != "live":
                 return False
-            return self._table.delete(storage_key)
+            deleted = self._table.delete(storage_key)
+            if deleted:
+                self._emit_delete(key=key, namespace=namespace, ts_ms=now_ms)
+            return deleted
 
     def incr(self, key: str, amount: int = 1, namespace: str = "default") -> int:
         return self._apply_delta(key=key, amount=amount, namespace=namespace)
@@ -81,6 +88,7 @@ class StoreEngine:
         with self._lock:
             next_version = self._current_namespace_version(namespace) + 1
             self._namespace_versions[namespace] = next_version
+            self._emit_invalidate(namespace=namespace, version=next_version, ts_ms=self._now_ms())
             return next_version
 
     def export_snapshot(self) -> SnapshotPayload:
@@ -219,4 +227,46 @@ class StoreEngine:
                 )
 
             self._table.put(storage_key, next_record)
+            self._emit_upsert(next_record)
             return next_value
+
+    def _emit_upsert(self, record: StoreRecord) -> None:
+        self._emit_mutation(
+            {
+                "op": "upsert",
+                "ts_ms": record.updated_at_ms,
+                "record": {
+                    "key": record.key,
+                    "value_str": record.value_str,
+                    "namespace": record.namespace,
+                    "namespace_version": record.namespace_version,
+                    "expires_at_ms": record.expires_at_ms,
+                    "created_at_ms": record.created_at_ms,
+                    "updated_at_ms": record.updated_at_ms,
+                },
+            }
+        )
+
+    def _emit_delete(self, key: str, namespace: str, ts_ms: int) -> None:
+        self._emit_mutation(
+            {
+                "op": "delete",
+                "ts_ms": ts_ms,
+                "key": key,
+                "namespace": namespace,
+            }
+        )
+
+    def _emit_invalidate(self, namespace: str, version: int, ts_ms: int) -> None:
+        self._emit_mutation(
+            {
+                "op": "invalidate",
+                "ts_ms": ts_ms,
+                "namespace": namespace,
+                "version": version,
+            }
+        )
+
+    def _emit_mutation(self, event: dict[str, Any]) -> None:
+        if self._mutation_logger is not None:
+            self._mutation_logger(event)

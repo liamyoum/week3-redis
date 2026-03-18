@@ -4,6 +4,7 @@ from fastapi.testclient import TestClient
 
 from app.domain.models import SnapshotEntry, SnapshotPayload
 from app.main import create_app
+from app.persistence.aof import AofRepository, AofService
 from app.persistence.repository import SnapshotRepository
 from app.persistence.service import SnapshotService
 
@@ -99,13 +100,110 @@ def test_snapshot_service_loads_and_saves_store(tmp_path: Path) -> None:
     assert target_store.imported_snapshot == original_snapshot
 
 
+def test_snapshot_service_can_reset_aof_after_snapshot_save(tmp_path: Path) -> None:
+    repository = SnapshotRepository(tmp_path / "snapshot.json")
+    aof_repository = AofRepository(tmp_path / "appendonly.aof.jsonl")
+    aof_service = AofService(aof_repository)
+    service = SnapshotService(repository, after_save=aof_service.reset)
+    source_store = FakeStore(make_snapshot())
+
+    aof_service.append_event(
+        {
+            "op": "delete",
+            "ts_ms": 1_710_000_000_200,
+            "key": "demo:1",
+            "namespace": "default",
+        }
+    )
+
+    service.save_from(source_store)
+
+    assert repository.exists() is True
+    assert aof_repository.load_all() == []
+
+
+def test_aof_service_replays_mutations_over_base_snapshot(tmp_path: Path) -> None:
+    aof_service = AofService(AofRepository(tmp_path / "appendonly.aof.jsonl"))
+    store = FakeStore(make_snapshot())
+
+    aof_service.append_event(
+        {
+            "op": "upsert",
+            "ts_ms": 1_710_000_000_200,
+            "record": {
+                "key": "counter",
+                "value_str": "3",
+                "namespace": "default",
+                "namespace_version": 2,
+                "expires_at_ms": None,
+                "created_at_ms": 1_710_000_000_150,
+                "updated_at_ms": 1_710_000_000_200,
+            },
+        }
+    )
+    aof_service.append_event(
+        {
+            "op": "invalidate",
+            "ts_ms": 1_710_000_000_300,
+            "namespace": "default",
+            "version": 3,
+        }
+    )
+    aof_service.append_event(
+        {
+            "op": "delete",
+            "ts_ms": 1_710_000_000_400,
+            "key": "demo:1",
+            "namespace": "default",
+        }
+    )
+
+    replayed_snapshot = aof_service.replay_into(store)
+
+    assert replayed_snapshot is not None
+    assert replayed_snapshot.saved_at_ms == 1_710_000_000_400
+    assert replayed_snapshot.namespace_versions == {"default": 3}
+    assert replayed_snapshot.entries == [
+        SnapshotEntry(
+            key="counter",
+            value_str="3",
+            namespace="default",
+            namespace_version=2,
+            expires_at_ms=None,
+            created_at_ms=1_710_000_000_150,
+            updated_at_ms=1_710_000_000_200,
+        )
+    ]
+    assert store.snapshot == replayed_snapshot
+
+
 def test_app_lifespan_restores_on_startup_and_saves_on_shutdown(tmp_path: Path) -> None:
     snapshot_path = tmp_path / "snapshot.json"
+    aof_path = tmp_path / "appendonly.aof.jsonl"
     snapshot = make_snapshot()
     SnapshotRepository(snapshot_path).save(snapshot)
+    AofRepository(aof_path).append(
+        {
+            "op": "upsert",
+            "ts_ms": 1_710_000_000_300,
+            "record": {
+                "key": "restored",
+                "value_str": "live",
+                "namespace": "default",
+                "namespace_version": 2,
+                "expires_at_ms": None,
+                "created_at_ms": 1_710_000_000_250,
+                "updated_at_ms": 1_710_000_000_300,
+            },
+        }
+    )
 
     app = create_app()
-    app.state.snapshot_service = SnapshotService(SnapshotRepository(snapshot_path))
+    app.state.aof_service = AofService(AofRepository(aof_path))
+    app.state.snapshot_service = SnapshotService(
+        SnapshotRepository(snapshot_path),
+        after_save=app.state.aof_service.reset,
+    )
     app.state.store = FakeStore(
         SnapshotPayload(
             version=1,
@@ -127,7 +225,12 @@ def test_app_lifespan_restores_on_startup_and_saves_on_shutdown(tmp_path: Path) 
     with TestClient(app) as client:
         response = client.get("/health")
         assert response.status_code == 200
-        assert app.state.store.imported_snapshot == snapshot
+        assert app.state.store.imported_snapshot is not None
+        assert app.state.store.imported_snapshot.namespace_versions == {"default": 2}
+        assert any(entry.key == "demo:1" for entry in app.state.store.imported_snapshot.entries)
+        assert any(entry.key == "restored" for entry in app.state.store.imported_snapshot.entries)
+        assert any(entry.key == "restored" for entry in app.state.store.snapshot.entries)
 
     reloaded = SnapshotRepository(snapshot_path).load()
     assert reloaded == app.state.store.snapshot
+    assert AofRepository(aof_path).load_all() == []
