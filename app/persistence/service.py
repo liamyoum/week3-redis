@@ -9,7 +9,7 @@ class SnapshotService:
     def __init__(
         self,
         repository: SnapshotRepository,
-        after_save: Callable[[], None] | None = None,
+        after_save: Callable[[int], None] | None = None,
     ) -> None:
         # 파일 입출력 세부사항은 repository에 맡기고,
         # service는 store와 persistence 흐름만 조율한다.
@@ -34,9 +34,16 @@ class SnapshotService:
     def save_from(self, store: StoreProtocol) -> SnapshotPayload:
         # 현재 메모리 store 상태를 snapshot으로 내보낸 뒤
         # repository 계층에 파일 저장을 위임한다.
-        snapshot = store.export_snapshot()
+        marker = 0
+        export_with_marker = getattr(store, "export_snapshot_with_marker", None)
+        if callable(export_with_marker):
+            # StoreEngine이 snapshot 시점의 mutation marker를 함께 제공하면
+            # 이후 AOF rewrite에서 snapshot 이후 이벤트만 남길 수 있다.
+            snapshot, marker = export_with_marker()
+        else:
+            snapshot = store.export_snapshot()
         self._repository.save(snapshot)
         if self._after_save is not None:
-            # snapshot이 최신 상태를 모두 담고 나면 AOF는 비워도 된다.
-            self._after_save()
+            # snapshot 시점 이후에 새로 쌓인 이벤트만 남기도록 AOF를 rewrite한다.
+            self._after_save(marker)
         return snapshot

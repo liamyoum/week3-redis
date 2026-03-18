@@ -303,6 +303,7 @@ def test_store_engine_emits_aof_style_mutation_events() -> None:
         "delete",
         "invalidate",
     ]
+    assert [event["seq"] for event in events] == [1, 2, 3, 4]
     record = events[1]["record"]
     assert isinstance(record, dict)
     assert record["value_str"] == "3"

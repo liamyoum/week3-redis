@@ -10,8 +10,19 @@ from app.persistence.repository import SnapshotRepository
 from app.persistence.service import SnapshotService
 
 
-def configure_aof_service(app: FastAPI, aof_path: str) -> AofService:
-    service = AofService(AofRepository(aof_path))
+def configure_aof_service(
+    app: FastAPI,
+    aof_path: str,
+    fsync_mode: str = "everysec",
+    recovery_mode: str = "truncate",
+) -> AofService:
+    service = AofService(
+        AofRepository(
+            aof_path,
+            fsync_mode=fsync_mode,
+            recovery_mode=recovery_mode,
+        )
+    )
     app.state.aof_service = service
     return service
 

@@ -66,11 +66,15 @@ the benchmark script, and 발표용 검증 정리 문서화.
 - Default snapshot file is `data/snapshot.json`
 - Incremental AOF path is configured with `MINI_REDIS_AOF_PATH`
 - Default AOF file is `data/appendonly.aof.jsonl`
+- AOF flush policy is configured with `MINI_REDIS_AOF_FSYNC`
+- Supported flush modes are `always`, `everysec`, `no`
+- AOF recovery policy is configured with `MINI_REDIS_AOF_RECOVERY_MODE`
+- Supported recovery modes are `strict`, `truncate`
 - Snapshot persistence lives under `app/persistence`
 - App startup loads the snapshot only when `app.state.store` is configured
 - App startup replays AOF entries after snapshot restore
 - App shutdown exports the current store snapshot back to disk
-- Snapshot save resets the AOF so only post-snapshot mutations accumulate
+- Snapshot save rewrites the AOF so only post-snapshot mutations accumulate
 - Writes use a temporary file plus atomic replace so partial writes do not
   corrupt the main snapshot file
 

@@ -25,6 +25,7 @@ class StoreEngine:
         self._namespace_versions: dict[str, int] = {}
         self._lock = threading.RLock()
         self._mutation_logger = mutation_logger
+        self._mutation_seq = 0
 
     def set(
         self,
@@ -91,6 +92,10 @@ class StoreEngine:
             return next_version
 
     def export_snapshot(self) -> SnapshotPayload:
+        snapshot, _ = self.export_snapshot_with_marker()
+        return snapshot
+
+    def export_snapshot_with_marker(self) -> tuple[SnapshotPayload, int]:
         with self._lock:
             saved_at_ms = self._now_ms()
             entries: list[SnapshotEntry] = []
@@ -110,11 +115,14 @@ class StoreEngine:
                         updated_at_ms=record.updated_at_ms,
                     )
                 )
-            return SnapshotPayload(
-                version=1,
-                saved_at_ms=saved_at_ms,
-                namespace_versions=dict(self._namespace_versions),
-                entries=entries,
+            return (
+                SnapshotPayload(
+                    version=1,
+                    saved_at_ms=saved_at_ms,
+                    namespace_versions=dict(self._namespace_versions),
+                    entries=entries,
+                ),
+                self._mutation_seq,
             )
 
     def import_snapshot(self, snapshot: SnapshotPayload) -> None:
@@ -268,4 +276,6 @@ class StoreEngine:
 
     def _emit_mutation(self, event: dict[str, Any]) -> None:
         if self._mutation_logger is not None:
+            self._mutation_seq += 1
+            event["seq"] = self._mutation_seq
             self._mutation_logger(event)

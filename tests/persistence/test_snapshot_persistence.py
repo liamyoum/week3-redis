@@ -1,18 +1,20 @@
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app.domain.models import SnapshotEntry, SnapshotPayload, StoreRecord
 from app.main import create_app
-from app.persistence.aof import AofRepository, AofService
+from app.persistence.aof import AofCorruptionError, AofRepository, AofService
 from app.persistence.repository import SnapshotRepository
 from app.persistence.service import SnapshotService
 
 
 class FakeStore:
-    def __init__(self, snapshot: SnapshotPayload | None = None) -> None:
+    def __init__(self, snapshot: SnapshotPayload | None = None, marker: int = 0) -> None:
         self.snapshot = snapshot or SnapshotPayload()
         self.imported_snapshot: SnapshotPayload | None = None
+        self.marker = marker
 
     def set(
         self,
@@ -50,6 +52,9 @@ class FakeStore:
 
     def export_snapshot(self) -> SnapshotPayload:
         return self.snapshot
+
+    def export_snapshot_with_marker(self) -> tuple[SnapshotPayload, int]:
+        return self.snapshot, self.marker
 
     def import_snapshot(self, snapshot: SnapshotPayload) -> None:
         self.imported_snapshot = snapshot
@@ -108,22 +113,41 @@ def test_snapshot_service_can_reset_aof_after_snapshot_save(tmp_path: Path) -> N
     repository = SnapshotRepository(tmp_path / "snapshot.json")
     aof_repository = AofRepository(tmp_path / "appendonly.aof.jsonl")
     aof_service = AofService(aof_repository)
-    service = SnapshotService(repository, after_save=aof_service.reset)
-    source_store = FakeStore(make_snapshot())
+    service = SnapshotService(repository, after_save=aof_service.rewrite_after)
+    source_store = FakeStore(make_snapshot(), marker=2)
 
     aof_service.append_event(
         {
+            "seq": 1,
             "op": "delete",
             "ts_ms": 1_710_000_000_200,
             "key": "demo:1",
             "namespace": "default",
         }
     )
+    aof_service.append_event(
+        {
+            "seq": 3,
+            "op": "upsert",
+            "ts_ms": 1_710_000_000_300,
+            "record": {
+                "key": "demo:2",
+                "value_str": "latest",
+                "namespace": "default",
+                "namespace_version": 2,
+                "expires_at_ms": None,
+                "created_at_ms": 1_710_000_000_200,
+                "updated_at_ms": 1_710_000_000_300,
+            },
+        }
+    )
 
     service.save_from(source_store)
 
     assert repository.exists() is True
-    assert aof_repository.load_all() == []
+    events = aof_repository.load_all()
+    assert len(events) == 1
+    assert events[0]["record"]["key"] == "demo:2"
 
 
 def test_aof_service_replays_mutations_over_base_snapshot(tmp_path: Path) -> None:
@@ -132,6 +156,7 @@ def test_aof_service_replays_mutations_over_base_snapshot(tmp_path: Path) -> Non
 
     aof_service.append_event(
         {
+            "seq": 1,
             "op": "upsert",
             "ts_ms": 1_710_000_000_200,
             "record": {
@@ -147,6 +172,7 @@ def test_aof_service_replays_mutations_over_base_snapshot(tmp_path: Path) -> Non
     )
     aof_service.append_event(
         {
+            "seq": 2,
             "op": "invalidate",
             "ts_ms": 1_710_000_000_300,
             "namespace": "default",
@@ -155,6 +181,7 @@ def test_aof_service_replays_mutations_over_base_snapshot(tmp_path: Path) -> Non
     )
     aof_service.append_event(
         {
+            "seq": 3,
             "op": "delete",
             "ts_ms": 1_710_000_000_400,
             "key": "demo:1",
@@ -181,6 +208,68 @@ def test_aof_service_replays_mutations_over_base_snapshot(tmp_path: Path) -> Non
     assert store.snapshot == replayed_snapshot
 
 
+def test_aof_repository_truncates_corrupted_tail_in_truncate_mode(tmp_path: Path) -> None:
+    repository = AofRepository(
+        tmp_path / "appendonly.aof.jsonl",
+        recovery_mode="truncate",
+    )
+    repository.append({"seq": 1, "op": "delete", "ts_ms": 1, "key": "a", "namespace": "default"})
+    repository.path.write_bytes(repository.path.read_bytes() + b'{"seq":2,"op":"upsert"')
+
+    events = repository.load_all()
+
+    assert len(events) == 1
+    assert events[0]["seq"] == 1
+
+
+def test_aof_repository_raises_for_corrupted_tail_in_strict_mode(tmp_path: Path) -> None:
+    repository = AofRepository(
+        tmp_path / "appendonly.aof.jsonl",
+        recovery_mode="strict",
+    )
+    repository.append({"seq": 1, "op": "delete", "ts_ms": 1, "key": "a", "namespace": "default"})
+    repository.path.write_bytes(repository.path.read_bytes() + b'{"seq":2,"op":"upsert"')
+
+    with pytest.raises(AofCorruptionError):
+        repository.load_all()
+
+
+def test_aof_repository_respects_fsync_policy(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    fsync_calls: list[int] = []
+    times = iter([1.0, 1.2, 2.5])
+
+    def fake_fsync(fd: int) -> None:
+        fsync_calls.append(fd)
+
+    monkeypatch.setattr("app.persistence.aof.os.fsync", fake_fsync)
+
+    repository = AofRepository(
+        tmp_path / "appendonly.aof.jsonl",
+        fsync_mode="everysec",
+        now_monotonic=lambda: next(times),
+    )
+
+    repository.append({"seq": 1, "op": "delete", "ts_ms": 1, "key": "a", "namespace": "default"})
+    repository.append({"seq": 2, "op": "delete", "ts_ms": 2, "key": "b", "namespace": "default"})
+    repository.append({"seq": 3, "op": "delete", "ts_ms": 3, "key": "c", "namespace": "default"})
+
+    assert len(fsync_calls) == 2
+
+
+def test_aof_service_rewrite_after_keeps_only_post_snapshot_events(tmp_path: Path) -> None:
+    repository = AofRepository(tmp_path / "appendonly.aof.jsonl")
+    service = AofService(repository)
+    repository.append({"seq": 1, "op": "delete", "ts_ms": 1, "key": "a", "namespace": "default"})
+    repository.append({"seq": 2, "op": "delete", "ts_ms": 2, "key": "b", "namespace": "default"})
+    repository.append({"seq": 3, "op": "delete", "ts_ms": 3, "key": "c", "namespace": "default"})
+
+    service.rewrite_after(2)
+
+    events = repository.load_all()
+    assert len(events) == 1
+    assert events[0]["key"] == "c"
+
+
 def test_app_lifespan_restores_on_startup_and_saves_on_shutdown(tmp_path: Path) -> None:
     snapshot_path = tmp_path / "snapshot.json"
     aof_path = tmp_path / "appendonly.aof.jsonl"
@@ -188,6 +277,7 @@ def test_app_lifespan_restores_on_startup_and_saves_on_shutdown(tmp_path: Path) 
     SnapshotRepository(snapshot_path).save(snapshot)
     AofRepository(aof_path).append(
         {
+            "seq": 1,
             "op": "upsert",
             "ts_ms": 1_710_000_000_300,
             "record": {
@@ -206,7 +296,7 @@ def test_app_lifespan_restores_on_startup_and_saves_on_shutdown(tmp_path: Path) 
     app.state.aof_service = AofService(AofRepository(aof_path))
     app.state.snapshot_service = SnapshotService(
         SnapshotRepository(snapshot_path),
-        after_save=app.state.aof_service.reset,
+        after_save=app.state.aof_service.rewrite_after,
     )
     app.state.store = FakeStore(
         SnapshotPayload(
@@ -223,7 +313,8 @@ def test_app_lifespan_restores_on_startup_and_saves_on_shutdown(tmp_path: Path) 
                     updated_at_ms=1_710_000_001_100,
                 )
             ],
-        )
+        ),
+        marker=1,
     )
 
     with TestClient(app) as client:
