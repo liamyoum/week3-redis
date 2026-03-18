@@ -84,6 +84,21 @@ def purchase_product(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
 
+@router.post("/store/products/{product_id}/restock", response_model=PurchaseResponse)
+def restock_product(
+    payload: PurchaseRequest,
+    storefront: StorefrontDep,
+    product_id: str = Path(min_length=1),
+) -> PurchaseResponse:
+    try:
+        return storefront.restock_product(product_id, payload.quantity)
+    except ProductNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Product not found.",
+        ) from exc
+
+
 @router.post("/store/products/{product_id}/invalidate", response_model=InvalidateResponse)
 def invalidate_product(
     storefront: StorefrontDep,

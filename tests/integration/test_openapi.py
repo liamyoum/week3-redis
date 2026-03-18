@@ -21,6 +21,7 @@ def test_openapi_contains_seed_routes_and_models(client: TestClient) -> None:
     assert "/store/products/{product_id}/cached" in paths
     assert "/store/products/{product_id}/reserve" in paths
     assert "/store/products/{product_id}/purchase" in paths
+    assert "/store/products/{product_id}/restock" in paths
     assert "/store/products/{product_id}/invalidate" in paths
     assert "/store/state" in paths
 
@@ -29,6 +30,7 @@ def test_openapi_contains_seed_routes_and_models(client: TestClient) -> None:
     assert "requestBody" in paths["/kv/{key}/decr"]["post"]
     assert "requestBody" in paths["/store/products/{product_id}/reserve"]["post"]
     assert "requestBody" in paths["/store/products/{product_id}/purchase"]["post"]
+    assert "requestBody" in paths["/store/products/{product_id}/restock"]["post"]
 
     assert "PutValueRequest" in components
     assert "CounterRequest" in components

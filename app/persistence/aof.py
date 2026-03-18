@@ -135,7 +135,12 @@ class AofService:
     def replay_into(self, store: StoreProtocol) -> SnapshotPayload | None:
         # 현재 store 상태를 기반으로 AOF 이벤트를 순서대로 반영한 뒤 한 번에 import한다.
         base_snapshot = store.export_snapshot()
-        replayed_snapshot = self._apply_events(base_snapshot, self._repository.iter_events())
+        events = self._repository.load_all()
+        replayed_snapshot = self._apply_events(base_snapshot, events)
+        max_seq = max((int(event.get("seq", 0)) for event in events), default=0)
+        restore_seq = getattr(store, "restore_mutation_seq", None)
+        if callable(restore_seq):
+            restore_seq(max_seq)
         if replayed_snapshot == base_snapshot:
             return None
         store.import_snapshot(replayed_snapshot)

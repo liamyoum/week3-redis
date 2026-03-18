@@ -55,6 +55,8 @@ const nodes = {
   aofStatus: document.getElementById("aof-status"),
   currentStock: document.getElementById("current-stock"),
   stateItems: document.getElementById("state-items"),
+  snapshotJson: document.getElementById("snapshot-json"),
+  aofJson: document.getElementById("aof-json"),
   eventLog: document.getElementById("event-log"),
   consoleKey: document.getElementById("console-key"),
   consoleNamespace: document.getElementById("console-namespace"),
@@ -185,6 +187,7 @@ async function loadDirect() {
   const productId = requireSelection();
   const payload = await api(`/store/products/${productId}/direct`);
   setMetric("direct", payload);
+  await refreshState();
   pushEvent("원본 직접 조회", `${productId} · ${payload.latency_ms.toFixed(1)}ms`);
 }
 
@@ -192,6 +195,7 @@ async function loadCached() {
   const productId = requireSelection();
   const payload = await api(`/store/products/${productId}/cached`);
   setMetric("cache", payload);
+  await refreshState();
   pushEvent(
     "레디스 캐시 조회",
     `${productId} · ${cacheStatusLabel[payload.cache_status] ?? payload.cache_status} · ${payload.latency_ms.toFixed(1)}ms`,
@@ -242,7 +246,8 @@ async function reserveProduct() {
     }),
   });
   startHoldCountdown(payload.expires_at_ms);
-  pushEvent("TTL 홀드", `${productId} · 지금부터 15초 동안 홀드`);
+  await refreshState();
+  pushEvent("캐시 TTL", `${productId} · 캐시가 15초 뒤 만료되도록 설정됨`);
 }
 
 function startHoldCountdown(expiresAtMs) {
@@ -251,13 +256,13 @@ function startHoldCountdown(expiresAtMs) {
     const remainingMs = expiresAtMs - Date.now();
     if (remainingMs <= 0) {
       nodes.holdStatus.textContent = "만료됨";
-      nodes.holdDetail.textContent = "홀드 키의 TTL이 만료되어 자동으로 사라졌습니다.";
+      nodes.holdDetail.textContent = "선택한 상품 캐시 TTL이 만료되어 다음 캐시 조회는 miss가 됩니다.";
       window.clearInterval(state.holdTimer);
       state.holdTimer = null;
       return;
     }
     nodes.holdStatus.textContent = `${Math.ceil(remainingMs / 1000)}초 남음`;
-    nodes.holdDetail.textContent = `세션 ${state.sessionId.slice(0, 8)} 기준 홀드 중`;
+    nodes.holdDetail.textContent = `선택한 상품 캐시가 ${Math.ceil(remainingMs / 1000)}초 뒤 만료됩니다.`;
   };
   tick();
   state.holdTimer = window.setInterval(tick, 1000);
@@ -271,7 +276,20 @@ async function purchaseProduct() {
   });
   nodes.currentStock.textContent = String(payload.stock);
   await loadProducts();
+  await refreshState();
   pushEvent("카운터 감소", `${productId} 재고 1 차감 -> ${payload.stock}`);
+}
+
+async function restockProduct() {
+  const productId = requireSelection();
+  const payload = await api(`/store/products/${productId}/restock`, {
+    method: "POST",
+    body: JSON.stringify({ quantity: 1 }),
+  });
+  nodes.currentStock.textContent = String(payload.stock);
+  await loadProducts();
+  await refreshState();
+  pushEvent("카운터 증가", `${productId} 재고 1 증가 -> ${payload.stock}`);
 }
 
 async function invalidateProduct() {
@@ -279,6 +297,7 @@ async function invalidateProduct() {
   const payload = await api(`/store/products/${productId}/invalidate`, { method: "POST" });
   nodes.cacheStatus.textContent = "무효화됨";
   nodes.cacheStatus.className = "pill miss";
+  await refreshState();
   pushEvent("네임스페이스 무효화", `${payload.namespace} version ${payload.version}`);
 }
 
@@ -316,6 +335,12 @@ async function refreshState() {
       `,
     )
     .join("");
+  nodes.snapshotJson.textContent = payload.snapshot_payload
+    ? JSON.stringify(payload.snapshot_payload, null, 2)
+    : "아직 스냅샷을 저장하지 않았습니다.";
+  nodes.aofJson.textContent = payload.aof_events.length > 0
+    ? payload.aof_events.map((entry) => JSON.stringify(entry, null, 2)).join("\n\n")
+    : "아직 AOF 이벤트가 없습니다.";
 }
 
 async function consoleAction(action) {
@@ -355,12 +380,12 @@ async function consoleAction(action) {
 }
 
 function attachEvents() {
-  document.getElementById("refresh-products").addEventListener("click", loadProducts);
   document.getElementById("load-direct").addEventListener("click", () => wrapAction(loadDirect));
   document.getElementById("load-cached").addEventListener("click", () => wrapAction(loadCached));
   document.getElementById("run-benchmark").addEventListener("click", () => wrapAction(runBenchmark));
   document.getElementById("reserve-product").addEventListener("click", () => wrapAction(reserveProduct));
   document.getElementById("purchase-product").addEventListener("click", () => wrapAction(purchaseProduct));
+  document.getElementById("restock-product").addEventListener("click", () => wrapAction(restockProduct));
   document.getElementById("invalidate-product").addEventListener("click", () => wrapAction(invalidateProduct));
   document.getElementById("save-snapshot").addEventListener("click", () => wrapAction(saveSnapshot));
   document.getElementById("refresh-state").addEventListener("click", () => wrapAction(refreshState));

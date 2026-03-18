@@ -64,6 +64,9 @@ class FakeStore:
         _ = limit
         raise NotImplementedError
 
+    def restore_mutation_seq(self, seq: int) -> None:
+        self.marker = max(self.marker, seq)
+
 
 def make_snapshot() -> SnapshotPayload:
     return SnapshotPayload(
@@ -271,6 +274,38 @@ def test_aof_service_rewrite_after_keeps_only_post_snapshot_events(tmp_path: Pat
     events = repository.load_all()
     assert len(events) == 1
     assert events[0]["key"] == "c"
+
+
+def test_aof_replay_restores_marker_for_future_snapshot_rewrite(tmp_path: Path) -> None:
+    snapshot_repository = SnapshotRepository(tmp_path / "snapshot.json")
+    aof_repository = AofRepository(tmp_path / "appendonly.aof.jsonl")
+    aof_service = AofService(aof_repository)
+    snapshot_service = SnapshotService(snapshot_repository, after_save=aof_service.rewrite_after)
+    store = FakeStore(make_snapshot())
+
+    aof_service.append_event(
+        {
+            "seq": 4,
+            "op": "upsert",
+            "ts_ms": 1_710_000_000_500,
+            "record": {
+                "key": "demo:2",
+                "value_str": "fresh",
+                "namespace": "default",
+                "namespace_version": 2,
+                "expires_at_ms": None,
+                "created_at_ms": 1_710_000_000_400,
+                "updated_at_ms": 1_710_000_000_500,
+            },
+        }
+    )
+
+    replayed = aof_service.replay_into(store)
+    assert replayed is not None
+
+    snapshot_service.save_from(store)
+
+    assert aof_repository.load_all() == []
 
 
 def test_app_lifespan_restores_on_startup_and_saves_on_shutdown(tmp_path: Path) -> None:

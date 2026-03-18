@@ -1,3 +1,5 @@
+import time
+
 from fastapi.testclient import TestClient
 
 
@@ -74,5 +76,50 @@ def test_storefront_reserve_creates_ttl_hold_token(client: TestClient) -> None:
     payload = response.json()
     assert payload["product_id"] == "cream-speaker"
     assert payload["session_id"] == "demo-session"
-    assert payload["hold_key"] == "hold:demo-session:cream-speaker"
+    assert payload["hold_key"] == "storefront-product:cream-speaker:detail"
     assert payload["expires_at_ms"] > 0
+
+
+def test_storefront_restock_increases_inventory(client: TestClient) -> None:
+    before = client.get("/store/products/cream-speaker/cached").json()
+    restock = client.post("/store/products/cream-speaker/restock", json={"quantity": 2})
+    after = client.get("/store/products/cream-speaker/cached").json()
+
+    assert restock.status_code == 200
+    assert restock.json()["stock"] == before["product"]["stock"] + 2
+    assert after["product"]["stock"] == before["product"]["stock"] + 2
+
+
+def test_storefront_cache_ttl_expires_selected_product_cache(client: TestClient) -> None:
+    first_cached = client.get("/store/products/cream-speaker/cached")
+    ttl_response = client.post(
+        "/store/products/cream-speaker/reserve",
+        json={"session_id": "demo-session", "ttl_ms": 50},
+    )
+    second_cached = client.get("/store/products/cream-speaker/cached")
+    time.sleep(0.06)
+    third_cached = client.get("/store/products/cream-speaker/cached")
+
+    assert first_cached.status_code == 200
+    assert ttl_response.status_code == 200
+    assert second_cached.json()["cache_status"] == "hit"
+    assert third_cached.json()["cache_status"] == "miss"
+
+
+def test_storefront_state_exposes_snapshot_and_post_snapshot_aof_events(client: TestClient) -> None:
+    client.get("/store/products/sunset-lamp/cached")
+    snapshot = client.post("/admin/snapshot")
+    purchase = client.post("/store/products/sunset-lamp/purchase", json={"quantity": 1})
+    invalidate = client.post("/store/products/sunset-lamp/invalidate")
+    state = client.get("/store/state")
+
+    assert snapshot.status_code == 200
+    assert purchase.status_code == 200
+    assert invalidate.status_code == 200
+    assert state.status_code == 200
+
+    payload = state.json()
+    assert payload["snapshot_payload"] is not None
+    assert payload["snapshot_payload"]["entries"]
+    assert len(payload["aof_events"]) >= 2
+    assert {event["op"] for event in payload["aof_events"]} >= {"upsert", "invalidate"}

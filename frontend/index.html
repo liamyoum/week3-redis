@@ -30,7 +30,6 @@
               <p class="eyebrow">한정 굿즈 데모</p>
               <h2>상품 카드</h2>
             </div>
-            <button id="refresh-products" class="ghost-button">새로고침</button>
           </div>
           <div id="product-grid" class="product-grid"></div>
         </section>
@@ -92,16 +91,17 @@
             </div>
           </div>
           <div class="button-row wrap">
-            <button id="reserve-product">지금부터 15초 홀드</button>
+            <button id="reserve-product">캐시를 15초 뒤 만료시키기</button>
             <button id="purchase-product">재고 1 차감</button>
+            <button id="restock-product">재고 1 증가</button>
             <button id="invalidate-product">캐시 무효화</button>
             <button id="save-snapshot" class="ghost-button">스냅샷 저장</button>
           </div>
           <div class="state-grid">
             <article class="mini-card">
-              <p class="mini-label">TTL 홀드</p>
+              <p class="mini-label">캐시 TTL</p>
               <strong id="hold-status">없음</strong>
-              <span id="hold-detail" class="hint">버튼을 누른 시점부터 15초 뒤 자동 만료됩니다.</span>
+              <span id="hold-detail" class="hint">선택한 상품 캐시를 지금부터 15초 뒤 만료되도록 설정합니다.</span>
             </article>
             <article class="mini-card">
               <p class="mini-label">영속성 상태</p>
@@ -114,6 +114,10 @@
               <span class="hint">재고 감소는 Redis counter로 처리합니다.</span>
             </article>
           </div>
+          <p class="hint">
+            참고: `DB Direct` 는 읽기 전용이라 AOF를 바꾸지 않는다. `Redis Cache` 도 hit이면 읽기만 수행하고,
+            miss이거나 `캐시 무효화`, `재고 1 차감`, `재고 1 증가`, `캐시를 15초 뒤 만료시키기` 같은 쓰기 동작만 AOF에 남는다.
+          </p>
         </section>
 
         <section class="panel state-panel">
@@ -125,14 +129,24 @@
             <button id="refresh-state" class="ghost-button">상태 새로고침</button>
           </div>
           <div id="state-items" class="state-items"></div>
+          <div class="compare-grid">
+            <article class="metric-card">
+              <p class="metric-label">Snapshot JSON</p>
+              <pre id="snapshot-json" class="payload">아직 스냅샷을 저장하지 않았습니다.</pre>
+            </article>
+            <article class="metric-card">
+              <p class="metric-label">AOF JSON Lines</p>
+              <pre id="aof-json" class="payload">아직 AOF 이벤트가 없습니다.</pre>
+            </article>
+          </div>
           <div class="persistence-guide">
             <h3>발표 시연 순서</h3>
             <ol>
               <li>상품 하나를 선택하고 `DB Direct` 와 `Redis Cache` 를 각각 눌러 속도 차이를 보여준다.</li>
               <li>`스냅샷 저장` 을 눌러 현재 메모리 상태를 파일로 고정한다.</li>
-              <li>`재고 1 차감` 또는 `캐시 무효화` 를 눌러 스냅샷 이후 변경분을 만든다.</li>
-              <li>아래 AOF 크기가 늘어난 것을 확인한다.</li>
-              <li>서버를 재시작한 뒤 같은 상품을 다시 조회해 복구를 보여준다.</li>
+              <li>`재고 1 차감`, `재고 1 증가`, `캐시 무효화`, `캐시를 15초 뒤 만료시키기` 중 하나를 눌러 스냅샷 이후 변경분을 만든다.</li>
+              <li>아래 AOF JSON Lines에 새로운 이벤트가 쌓이는 것을 보여준다.</li>
+              <li>비정상 종료 복구 데모는 브라우저 버튼이 아니라 터미널에서 `docker compose kill api` 또는 `kill -9` 로 보여준다.</li>
             </ol>
           </div>
           <div class="event-log-shell">

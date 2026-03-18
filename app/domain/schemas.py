@@ -116,3 +116,5 @@ class StoreStateResponse(BaseModel):
     aof_path: str | None = None
     aof_exists: bool
     aof_size_bytes: int = Field(ge=0)
+    snapshot_payload: dict[str, object] | None = None
+    aof_events: list[dict[str, object]] = Field(default_factory=list)

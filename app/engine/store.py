@@ -164,6 +164,11 @@ class StoreEngine:
                     deleted_count += 1
             return deleted_count
 
+    def restore_mutation_seq(self, seq: int) -> None:
+        with self._lock:
+            if seq > self._mutation_seq:
+                self._mutation_seq = seq
+
     @staticmethod
     def _default_now_ms() -> int:
         return time.time_ns() // 1_000_000

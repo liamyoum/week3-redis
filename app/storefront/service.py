@@ -15,10 +15,10 @@ from app.domain.schemas import (
     ReserveResponse,
     StoreStateResponse,
 )
+from app.persistence.aof import AofRepository
 from app.storefront.catalog import ProductCatalogProtocol, ProductRecord
 
 INVENTORY_NAMESPACE = "storefront-inventory"
-HOLD_NAMESPACE = "storefront-holds"
 DETAIL_KEY = "detail"
 
 
@@ -91,13 +91,19 @@ class StorefrontService:
         )
 
     def reserve_product(self, product_id: str, session_id: str, ttl_ms: int) -> ReserveResponse:
-        self._require_product(product_id)
-        hold_key = self._hold_key(product_id, session_id)
+        namespace = self._detail_namespace(product_id)
+        cache_record = self._store.get(DETAIL_KEY, namespace=namespace)
+        if cache_record is None:
+            product = self._load_from_origin(product_id)
+            payload = json.dumps(product.to_cache_payload(), separators=(",", ":"))
+        else:
+            payload = cache_record.value_str
+        hold_key = f"{namespace}:{DETAIL_KEY}"
         record = self._store.set(
-            key=hold_key,
-            value_str=product_id,
+            key=DETAIL_KEY,
+            value_str=payload,
             ttl_ms=ttl_ms,
-            namespace=HOLD_NAMESPACE,
+            namespace=namespace,
         )
         return ReserveResponse(
             product_id=product_id,
@@ -123,6 +129,20 @@ class StorefrontService:
             stock=remaining_stock,
         )
 
+    def restock_product(self, product_id: str, quantity: int) -> PurchaseResponse:
+        product = self._require_product(product_id)
+        self._ensure_inventory(product)
+        next_stock = self._store.incr(
+            key=self._inventory_key(product_id),
+            amount=quantity,
+            namespace=INVENTORY_NAMESPACE,
+        )
+        return PurchaseResponse(
+            product_id=product_id,
+            quantity=quantity,
+            stock=next_stock,
+        )
+
     def invalidate_product(self, product_id: str) -> int:
         self._require_product(product_id)
         return self._store.invalidate_namespace(self._detail_namespace(product_id))
@@ -146,6 +166,8 @@ class StorefrontService:
             aof_path=aof_path if isinstance(aof_path, str) else None,
             aof_exists=aof_exists,
             aof_size_bytes=aof_size,
+            snapshot_payload=self._read_snapshot_payload(snapshot_path),
+            aof_events=self._read_aof_events(aof_path),
         )
 
     def _load_from_origin(self, product_id: str) -> ProductRecord:
@@ -224,13 +246,28 @@ class StorefrontService:
         return True, path.stat().st_size
 
     @staticmethod
+    def _read_snapshot_payload(raw_path: Any) -> dict[str, object] | None:
+        if not isinstance(raw_path, str) or not raw_path:
+            return None
+        path = Path(raw_path)
+        if not path.exists():
+            return None
+        return json.loads(path.read_text(encoding="utf-8"))
+
+    @staticmethod
+    def _read_aof_events(raw_path: Any) -> list[dict[str, object]]:
+        if not isinstance(raw_path, str) or not raw_path:
+            return []
+        path = Path(raw_path)
+        if not path.exists():
+            return []
+        repository = AofRepository(path)
+        return [dict(event) for event in repository.load_all()]
+
+    @staticmethod
     def _detail_namespace(product_id: str) -> str:
         return f"storefront-product:{product_id}"
 
     @staticmethod
     def _inventory_key(product_id: str) -> str:
         return f"inventory:{product_id}"
-
-    @staticmethod
-    def _hold_key(product_id: str, session_id: str) -> str:
-        return f"hold:{session_id}:{product_id}"
