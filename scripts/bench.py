@@ -54,14 +54,6 @@ def summarize(
         hit_ratio=hit_ratio,
     )
 
-    return BenchmarkResult(
-        label=label,
-        requests=len(durations),
-        total_ms=sum(durations),
-        average_ms=statistics.fmean(durations),
-        hit_ratio=hit_ratio,
-    )
-
 
 def render_markdown(results: list[BenchmarkResult]) -> str:
     # README와 발표 자료에 바로 붙여넣기 쉬운 markdown 표 형태로 결과를 만든다.
@@ -91,7 +83,13 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--base-url", default="http://127.0.0.1:8000")
     parser.add_argument("--requests", type=int, default=100)
+    parser.add_argument(
+        "--scenario",
+        choices=["storefront", "demo"],
+        default="storefront",
+    )
     parser.add_argument("--item-id", default=f"bench-{int(time.time())}")
+    parser.add_argument("--product-id", default="sunset-lamp")
     parser.add_argument(
         "--report-path",
         default="",
@@ -102,8 +100,16 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
-    upstream_url = build_url(args.base_url, f"/demo/upstream/{args.item_id}")
-    cached_url = build_url(args.base_url, f"/demo/cached/{args.item_id}")
+    if args.scenario == "demo":
+        upstream_url = build_url(args.base_url, f"/demo/upstream/{args.item_id}")
+        cached_url = build_url(args.base_url, f"/demo/cached/{args.item_id}")
+        uncached_label = "Uncached upstream"
+        cached_label = "Cached demo"
+    else:
+        upstream_url = build_url(args.base_url, f"/store/products/{args.product_id}/direct")
+        cached_url = build_url(args.base_url, f"/store/products/{args.product_id}/cached")
+        uncached_label = "Storefront direct"
+        cached_label = "Storefront cached"
 
     try:
         # 같은 item_id를 반복 호출해서 첫 요청 miss 이후 cached endpoint에서
@@ -118,8 +124,8 @@ def main() -> int:
     # 나머지는 hit라고 가정해 단순 hit ratio를 계산한다.
     cached_hit_ratio = 0.0 if args.requests == 0 else max(args.requests - 1, 0) / args.requests
     results = [
-        summarize("Uncached upstream", uncached),
-        summarize("Cached demo", cached, hit_ratio=cached_hit_ratio),
+        summarize(uncached_label, uncached),
+        summarize(cached_label, cached, hit_ratio=cached_hit_ratio),
     ]
     table = render_markdown(results)
     print(table)

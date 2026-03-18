@@ -234,7 +234,10 @@ def test_aof_repository_raises_for_corrupted_tail_in_strict_mode(tmp_path: Path)
         repository.load_all()
 
 
-def test_aof_repository_respects_fsync_policy(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_aof_repository_respects_fsync_policy(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     fsync_calls: list[int] = []
     times = iter([1.0, 1.2, 2.5])
 

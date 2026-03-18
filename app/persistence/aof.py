@@ -71,7 +71,8 @@ class AofRepository:
                 try:
                     event = json.loads(line.decode("utf-8"))
                 except (UnicodeDecodeError, JSONDecodeError) as exc:
-                    # 마지막 레코드만 깨진 경우 truncate 모드에서는 tail 손상으로 보고 복구를 진행한다.
+                    # 마지막 레코드만 깨진 경우 truncate 모드에서는
+                    # tail 손상으로 보고 복구를 진행한다.
                     if self._recovery_mode == "truncate" and is_last_record:
                         break
                     raise AofCorruptionError(
