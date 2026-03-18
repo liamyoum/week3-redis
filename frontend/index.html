@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>미니 레디스 성능 실험실</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+
+<body>
+  <div class="page-shell">
+    <header class="hero">
+      <div class="hero-title">
+        <span class="eyebrow">고성능 인메모리 데이터 저장소</span>
+        <h1>레디스 <span>실험실</span></h1>
+      </div>
+      <div class="hero-badge">
+        <span>현재 원본 데이터 소스</span>
+        <strong id="origin-source">seed</strong>
+      </div>
+    </header>
+
+    <main class="layout">
+      <section class="panel catalog-panel">
+        <div class="panel-head">
+          <div>
+            <p class="eyebrow">데모 상품</p>
+            <h2>한정판 굿즈 카탈로그</h2>
+          </div>
+        </div>
+        <div id="product-grid" class="product-grid"></div>
+      </section>
+
+      <section class="panel compare-panel">
+        <div class="panel-head">
+          <div>
+            <p class="eyebrow">응답 속도 비교</p>
+            <h2 id="selected-title">상품을 선택해 주세요</h2>
+          </div>
+          <div class="button-row">
+            <button id="load-direct" class="ghost-button">원본 DB 조회</button>
+            <button id="load-cached">레디스 캐시 조회</button>
+            <button id="run-benchmark" class="ghost-button">5회 비교</button>
+          </div>
+        </div>
+
+        <div class="compare-grid">
+          <article class="metric-card direct-card">
+            <p class="metric-label">원본 DB 직조회</p>
+            <div class="latency" id="direct-latency">-</div>
+            <div class="status-row">
+              <span class="pill bypass" id="direct-status">우회</span>
+              <span class="hint" id="direct-source">원본</span>
+            </div>
+            <pre id="direct-payload" class="payload">요청을 기다리는 중입니다...</pre>
+          </article>
+
+          <article class="metric-card cache-card">
+            <p class="metric-label">레디스 캐시 경로</p>
+            <div class="latency highlight" id="cache-latency">-</div>
+            <div class="status-row">
+              <span class="pill neutral" id="cache-status">준비됨</span>
+              <span class="hint" id="cache-source">캐시</span>
+            </div>
+            <pre id="cache-payload" class="payload">요청을 기다리는 중입니다...</pre>
+          </article>
+        </div>
+
+        <div class="benchmark-shell">
+          <div class="benchmark-row">
+            <span class="label">DB 평균</span>
+            <div class="benchmark-bar">
+              <div id="direct-bar"></div>
+            </div>
+            <strong id="direct-average">-</strong>
+          </div>
+          <div class="benchmark-row">
+            <span class="label">레디스 평균</span>
+            <div class="benchmark-bar">
+              <div id="cache-bar"></div>
+            </div>
+            <strong id="cache-average">-</strong>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel action-panel">
+        <div class="panel-head">
+          <div>
+            <p class="eyebrow">레디스 동작</p>
+            <h2>핵심 기능 데모</h2>
+          </div>
+        </div>
+        <div class="action-rows">
+          <div class="button-row action-row">
+            <button id="purchase-product">재고 1 차감</button>
+            <button id="restock-product">재고 1 증가</button>
+            <button id="invalidate-product" class="danger-button">캐시 무효화</button>
+          </div>
+          <div class="button-row action-row">
+            <button id="reserve-product" class="ghost-button">15초 후 캐시 만료</button>
+            <button id="save-snapshot" class="ghost-button">현재 상태 스냅샷 저장</button>
+          </div>
+        </div>
+        <div class="state-grid">
+          <article class="mini-card">
+            <p class="mini-label">TTL 상태</p>
+            <strong id="hold-status">없음</strong>
+            <span id="hold-detail" class="hint">활성화된 만료 세션이 없습니다</span>
+          </article>
+          <article class="mini-card">
+            <p class="mini-label">영속성 상태</p>
+            <strong id="snapshot-status">상태 확인 필요</strong>
+            <span id="aof-status" class="hint">AOF 없음</span>
+          </article>
+          <article class="mini-card stock-card">
+            <p class="mini-label">실시간 재고</p>
+            <strong id="current-stock">-</strong>
+            <span class="hint">현재 상품 기준 재고 수량</span>
+          </article>
+        </div>
+      </section>
+
+      <section class="panel state-panel">
+        <div class="panel-head">
+          <div>
+            <p class="eyebrow">스냅샷 상태</p>
+            <h2>Snapshot + AOF</h2>
+          </div>
+        </div>
+        <div class="persistence-files-grid">
+          <article class="state-item persistence-file-card">
+            <span class="hint">Snapshot 파일</span>
+            <strong id="snapshot-file-status">확인 중</strong>
+            <span id="snapshot-file-updated" class="hint">마지막 저장 시각을 불러오는 중입니다.</span>
+            <span id="snapshot-file-detail" class="hint mono-value">파일 상태를 불러오는 중입니다.</span>
+          </article>
+          <article class="state-item persistence-file-card">
+            <span class="hint">AOF 파일</span>
+            <strong id="aof-file-status">확인 중</strong>
+            <span id="aof-file-updated" class="hint">마지막 기록 시각을 불러오는 중입니다.</span>
+            <span id="aof-file-detail" class="hint mono-value">파일 상태를 불러오는 중입니다.</span>
+          </article>
+          <article class="state-item persistence-file-card">
+            <span class="hint">복구 흐름</span>
+            <strong id="persistence-flow-title">Snapshot -> AOF Replay</strong>
+            <span id="persistence-flow-detail" class="hint">
+              시작 시 Snapshot을 먼저 불러오고, 그 뒤 AOF 변경분을 replay 해 최종 상태를 복원합니다.
+            </span>
+            <span id="persistence-flow-note" class="hint mono-value">
+              종료 시 Snapshot 저장 · 비정상 종료 시 AOF가 마지막 변경분을 살립니다.
+            </span>
+          </article>
+        </div>
+        <div class="persistence-demo-shell">
+          <div class="panel-head persistence-demo-head">
+            <div>
+              <p class="eyebrow">비정상 종료 복구 데모</p>
+              <h3>AOF로 살아남는 마지막 쓰기</h3>
+            </div>
+            <div class="button-row wrap">
+              <button id="write-persistence-demo">복구용 데이터 생성</button>
+              <button id="crash-api" class="danger-button">API 강제 종료</button>
+            </div>
+          </div>
+          <div class="persistence-demo-grid">
+            <article class="state-item">
+              <span class="hint">현재 상태</span>
+              <strong id="persistence-demo-status">기록 없음</strong>
+              <span id="persistence-demo-detail" class="hint">아직 복구 데모 데이터를 쓰지 않았습니다.</span>
+            </article>
+            <article class="state-item">
+              <span class="hint">마지막으로 쓴 값</span>
+              <strong id="persistence-demo-last-written" class="mono-value">-</strong>
+              <span id="persistence-demo-last-written-at" class="hint">브라우저에 저장된 기준값</span>
+            </article>
+            <article class="state-item">
+              <span class="hint">서버에서 읽은 현재 값</span>
+              <strong id="persistence-demo-current-value" class="mono-value">-</strong>
+              <span id="persistence-demo-current-updated" class="hint">API 재조회 결과</span>
+            </article>
+          </div>
+          <p class="hint persistence-demo-command">
+            강제 종료 뒤에는 터미널에서 `docker compose up -d api` 를 실행하면 이 카드가 자동으로 복구를 감지합니다.
+          </p>
+        </div>
+        <div class="persistence-grid">
+          <article class="metric-card persistence-card">
+            <div class="panel-head compact">
+              <div>
+                <p class="eyebrow">영속성 파일</p>
+                <h3>스냅샷 JSON</h3>
+              </div>
+              <span id="snapshot-meta" class="hint">저장된 스냅샷 없음</span>
+            </div>
+            <pre id="snapshot-payload" class="payload persistence-payload">저장된 스냅샷 없음</pre>
+          </article>
+          <article class="metric-card persistence-card">
+            <div class="panel-head compact">
+              <div>
+                <p class="eyebrow">스냅샷 이후 변경</p>
+                <h3>AOF 이벤트</h3>
+              </div>
+              <span id="aof-meta" class="hint">AOF 이벤트 없음</span>
+            </div>
+            <pre id="aof-payload" class="payload persistence-payload">AOF 이벤트 없음</pre>
+          </article>
+        </div>
+      </section>
+    </main>
+  </div>
+  <script src="/app.js" defer></script>
+</body>
+
+</html>

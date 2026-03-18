@@ -1,0 +1,38 @@
+[
+  {
+    "id": "sunset-lamp",
+    "name": "선셋 무드 램프",
+    "tagline": "오늘 한정 20개",
+    "description": "방 안 분위기를 바꾸는 주황빛 무드 램프. 발표용 데모에서 가장 먼저 비교할 대표 상품이다.",
+    "image_url": "https://images.pexels.com/photos/6044848/pexels-photo-6044848.jpeg?cs=srgb&dl=pexels-skylar-kang-6044848.jpg&fm=jpg",
+    "price": 49,
+    "stock": 20,
+    "accent_color": "#ff7a45",
+    "badge": "오늘의 드롭",
+    "emoji": "🌇"
+  },
+  {
+    "id": "cream-speaker",
+    "name": "크림 블루투스 스피커",
+    "tagline": "재입고 8개",
+    "description": "책상 위에 올려두기 좋은 크림 톤 무선 스피커. 캐시 hit 시 빠른 상품 상세 조회를 보여주기 좋다.",
+    "image_url": "https://unsplash.com/photos/6ZF15OgX-zI/download?force=true&w=900",
+    "price": 79,
+    "stock": 8,
+    "accent_color": "#5c7cfa",
+    "badge": "재입고",
+    "emoji": "🔊"
+  },
+  {
+    "id": "forest-blanket",
+    "name": "포레스트 피크닉 블랭킷",
+    "tagline": "플래시 세일 12개",
+    "description": "야외에서 바로 펼칠 수 있는 피크닉 블랭킷. TTL 홀드와 재고 감소 시연용으로 적합하다.",
+    "image_url": "https://images.pexels.com/photos/3847561/pexels-photo-3847561.jpeg?cs=srgb&dl=pexels-readymade-3847561.jpg&fm=jpg",
+    "price": 36,
+    "stock": 12,
+    "accent_color": "#2ab6a5",
+    "badge": "플래시 세일",
+    "emoji": "🧺"
+  }
+]

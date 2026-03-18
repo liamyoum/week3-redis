@@ -5,6 +5,7 @@ from app.persistence.lifespan import (
     configure_aof_service,
     configure_snapshot_service,
     snapshot_lifespan,
+    snapshot_status,
 )
 from app.persistence.repository import SnapshotRepository
 from app.persistence.service import SnapshotService
@@ -17,4 +18,5 @@ __all__ = [
     "configure_aof_service",
     "configure_snapshot_service",
     "snapshot_lifespan",
+    "snapshot_status",
 ]

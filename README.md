@@ -1,29 +1,73 @@
 # week3-redis
 
-Mini Redis team project.
+Mini Redis team project with a presentation-ready storefront demo.
 
 ## Project Overview
 
-This repository starts from a common seed PR that freezes the package layout,
-HTTP routes, shared data contracts, and the local quality toolchain. The actual
-Mini Redis logic will be implemented in follow-up branches owned by each team
-member.
+이 저장소는 직접 구현한 Mini Redis를 FastAPI API로 노출하고, 이를 `한정 굿즈 드롭`
+웹서비스에 연결해 캐시의 가치와 영속성을 직관적으로 보여주는 데모를 포함한다.
+
+핵심 메시지는 아래 3가지다.
+
+- 같은 상품을 반복 조회할 때 Mongo 원본보다 Mini Redis 캐시가 빠르다.
+- TTL, counter, invalidate가 실제 서비스 동작으로 연결된다.
+- snapshot + AOF로 서버 재시작 후에도 상태를 복구할 수 있다.
 
 ## Architecture
 
-- `app/api`: FastAPI routers and external HTTP contract
-- `app/domain`: shared models, protocols, and request/response schemas
-- `app/core`: custom hash table implementation owned by team member 1
-- `app/engine`: store semantics such as TTL and invalidation owned by team
-  member 2
-- `app/persistence`: snapshot save/restore owned by team member 4
+- `app/core`: custom hash table
+- `app/engine`: TTL, invalidate, counter semantics
+- `app/persistence`: snapshot + AOF persistence
+- `app/storefront`: Mongo/seed 상품 카탈로그와 데모 서비스 로직
+- `app/api`: FastAPI routers
+- `frontend`: 정적 발표용 UI
 
-The initial app only exposes a working `/health` endpoint. KV and admin routes
-exist as stubs so the public API shape is fixed before implementation starts.
+런타임 구성은 아래와 같다.
 
-## API Contracts
+- `MongoDB`: 원본 상품 데이터 저장
+- `Mini Redis`: 상품 상세 캐시, 재고 카운터, TTL 홀드, invalidate, snapshot/AOF
+- `Frontend`: direct vs cache 비교, persistence 상태, raw KV console
 
-- `GET /health`
+## Run
+
+로컬 백엔드만 실행:
+
+```bash
+make install
+make run
+```
+
+발표용 전체 스택 실행:
+
+```bash
+make docker-up
+```
+
+접속 주소:
+
+- Frontend: `http://127.0.0.1:8080`
+- API docs: `http://127.0.0.1:8000/docs`
+
+종료:
+
+```bash
+make docker-down
+```
+
+## Demo Flow
+
+### Storefront
+
+- `GET /store/products`
+- `GET /store/products/{product_id}/direct`
+- `GET /store/products/{product_id}/cached`
+- `POST /store/products/{product_id}/reserve`
+- `POST /store/products/{product_id}/purchase`
+- `POST /store/products/{product_id}/invalidate`
+- `GET /store/state`
+
+### Core Redis APIs
+
 - `PUT /kv/{key}`
 - `GET /kv/{key}`
 - `DELETE /kv/{key}`
@@ -32,116 +76,51 @@ exist as stubs so the public API shape is fixed before implementation starts.
 - `POST /namespaces/{namespace}/invalidate`
 - `POST /admin/snapshot`
 
-KV and admin endpoints currently return `501 Not Implemented` in the seed PR.
+## What To Show In The Presentation
 
-## Hash Table Design Talking Points
+1. 상품 하나를 선택하고 `DB Direct` 와 `Redis Cache` 를 각각 조회한다.
+2. 같은 상품을 다시 조회해 `miss -> hit` 전환과 응답시간 차이를 보여준다.
+3. `15초 홀드` 버튼으로 TTL countdown을 보여준다.
+4. `재고 1 차감` 버튼으로 counter 기반 재고 감소를 보여준다.
+5. `캐시 무효화` 버튼으로 다음 cached 요청이 다시 miss가 되는 것을 보여준다.
+6. `Snapshot 저장` 후 `data/snapshot.json`, `data/appendonly.aof.jsonl` 파일 상태를 확인한다.
+7. 서버 재시작 후 상태가 복구되는 것을 확인한다.
+8. 하단 `Mini Redis Console` 로 raw `SET/GET/DEL/INCR/DECR` 도 시연한다.
 
-- Custom hash table with a bucket array
-- FNV-1a 64-bit hashing
-- Separate chaining for collision handling
-- Resize when load factor exceeds `0.75`
-- Public methods limited to `put`, `get`, `delete`, `items`, and `__len__`
+## Benchmark
 
-## Test Strategy
-
-- Integration test for `/health`
-- Contract tests that ensure all stub routes exist and return `501`
-- OpenAPI schema tests to freeze request and response models
-- Follow-up branches will add unit tests for core, engine, and persistence
-
-## Performance Comparison Plan
-
-- Use a local mock upstream API with deterministic delay
-- Compare uncached requests against cached requests through the Mini Redis API
-- Record total time, average latency, and cache hit ratio in the README
-
-## Team 4 Scope
-
-Team member 4 owns snapshot persistence, startup and shutdown restore hooks,
-the benchmark script, and 발표용 검증 정리 문서화.
-
-### Snapshot Persistence
-
-- Snapshot file path is configured with `MINI_REDIS_SNAPSHOT_PATH`
-- Default snapshot file is `data/snapshot.json`
-- Incremental AOF path is configured with `MINI_REDIS_AOF_PATH`
-- Default AOF file is `data/appendonly.aof.jsonl`
-- AOF flush policy is configured with `MINI_REDIS_AOF_FSYNC`
-- Supported flush modes are `always`, `everysec`, `no`
-- AOF recovery policy is configured with `MINI_REDIS_AOF_RECOVERY_MODE`
-- Supported recovery modes are `strict`, `truncate`
-- Snapshot persistence lives under `app/persistence`
-- App startup loads the snapshot only when `app.state.store` is configured
-- App startup replays AOF entries after snapshot restore
-- App shutdown exports the current store snapshot back to disk
-- Snapshot save rewrites the AOF so only post-snapshot mutations accumulate
-- Writes use a temporary file plus atomic replace so partial writes do not
-  corrupt the main snapshot file
-
-### Integration Contract For Other Teammates
-
-To avoid merge conflicts, persistence assumes only one app-level integration
-point:
-
-- Team 2 or 3 should attach the concrete store instance to `app.state.store`
-  before the FastAPI lifespan starts
-- Persistence will call `store.import_snapshot(...)` on startup when a snapshot
-  exists
-- Persistence will replay post-snapshot AOF mutations on startup
-- Persistence will call `store.export_snapshot()` on shutdown
-
-This keeps the implementation isolated to `app/persistence` and one small hook
-inside `app/main.py`.
-
-### Benchmark Script
-
-Run the local benchmark after the demo endpoints are implemented:
+기본 벤치는 storefront direct/cache 기준으로 동작한다.
 
 ```bash
-python3 scripts/bench.py --base-url http://127.0.0.1:8000 --requests 100
+python3 scripts/bench.py --base-url http://127.0.0.1:8000 --requests 20
 ```
 
-Optional markdown export:
+기존 synthetic demo endpoint 기준으로도 비교할 수 있다.
 
 ```bash
 python3 scripts/bench.py \
   --base-url http://127.0.0.1:8000 \
-  --requests 100 \
-  --report-path docs/benchmark-results.md
+  --scenario demo \
+  --requests 20
 ```
 
-The benchmark assumes a fresh `item_id`, so the first cached request is a miss
-and the remaining requests are hits.
-
-### Presentation Verification Template
-
-Use the table below after running the benchmark and snapshot recovery demo.
-
-| Check | Expected Result | Actual Result |
-| --- | --- | --- |
-| Snapshot file save | `data/snapshot.json` created after shutdown | TBD |
-| Snapshot restore | Saved keys are available after restart | TBD |
-| Atomic replace | Snapshot file remains valid JSON after repeated saves | TBD |
-| Upstream benchmark | Higher total and average latency than cached path | TBD |
-| Cached benchmark | First call miss, repeated calls faster | TBD |
-| Cache hit ratio | Approximately `99%` for 100 repeated requests | TBD |
-
-### Local Validation
-
-Current persistence branch validation:
-
-| Item | Status |
-| --- | --- |
-| Snapshot repository round-trip test | Passed |
-| App startup restore and shutdown save test | Passed |
-| Existing seed integration tests | Passed |
-
-Recommended local command:
+## Quality Checks
 
 ```bash
-PYTHONPATH=. python3 -m pytest -q
+make lint
+make typecheck
+make test
 ```
 
-## Team Split
+## Persistence
 
-See `docs/team-split.md` for ownership boundaries and merge rules.
+- Snapshot path: `data/snapshot.json`
+- AOF path: `data/appendonly.aof.jsonl`
+- startup: snapshot load -> AOF replay
+- shutdown: snapshot save -> post-snapshot AOF rewrite
+
+## Notes
+
+- MongoDB가 연결되지 않으면 앱은 자동으로 seed 상품 카탈로그로 fallback 한다.
+- storefront direct 경로는 Mongo 원본 카탈로그를 직접 조회하고, cached hit 경로는 Redis 캐시 payload만 사용한다.
+- Mini Redis 내부 값은 문자열 기반이며, 상품 상세 캐시는 JSON 문자열로 직렬화해 저장한다.

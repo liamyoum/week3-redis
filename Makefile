@@ -1,4 +1,4 @@
-.PHONY: install lint typecheck test run
+.PHONY: install lint typecheck test run docker-up docker-down
 
 PYTHON = python3
 VENV = .venv
@@ -20,3 +20,9 @@ test:
 
 run:
 	$(VENV_BIN)/uvicorn app.main:create_app --factory --reload
+
+docker-up:
+	docker compose up --build
+
+docker-down:
+	docker compose down
