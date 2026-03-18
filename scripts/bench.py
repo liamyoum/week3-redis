@@ -35,7 +35,11 @@ def time_requests(url: str, repeats: int) -> list[float]:
     return durations
 
 
-def summarize(label: str, durations: list[float], hit_ratio: float | None = None) -> BenchmarkResult:
+def summarize(
+    label: str,
+    durations: list[float],
+    hit_ratio: float | None = None,
+) -> BenchmarkResult:
     return BenchmarkResult(
         label=label,
         requests=len(durations),

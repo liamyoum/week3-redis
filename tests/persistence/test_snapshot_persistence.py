@@ -2,7 +2,7 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from app.domain.models import SnapshotEntry, SnapshotPayload
+from app.domain.models import SnapshotEntry, SnapshotPayload, StoreRecord
 from app.main import create_app
 from app.persistence.repository import SnapshotRepository
 from app.persistence.service import SnapshotService
@@ -19,9 +19,13 @@ class FakeStore:
         value_str: str,
         ttl_ms: int | None = None,
         namespace: str = "default",
-    ) -> None:
-        _ = key, value_str, ttl_ms, namespace
-        raise NotImplementedError
+    ) -> StoreRecord:
+        return StoreRecord(
+            key=key,
+            value_str=value_str,
+            namespace=namespace,
+            expires_at_ms=ttl_ms,
+        )
 
     def get(self, key: str, namespace: str = "default") -> None:
         _ = key, namespace
