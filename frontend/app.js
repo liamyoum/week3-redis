@@ -6,6 +6,7 @@ const state = {
   sessionId: globalThis.crypto?.randomUUID?.() ?? `demo-${Date.now()}`,
   holdTimer: null,
   events: [],
+  productUi: {},
   persistenceDemo: {
     pollTimer: null,
     phase: "idle",
@@ -34,6 +35,23 @@ const sourceLabel = {
   seed: "시드 데이터",
   "seed-fallback": "시드 데이터",
   mongo: "몽고DB",
+};
+
+const defaultDirectView = {
+  latencyText: "-",
+  statusText: "우회",
+  statusClass: "pill bypass",
+  sourceText: "원본 경로",
+  payloadText: "선택한 상품으로 원본 조회를 실행해 주세요.",
+};
+
+const defaultCacheView = {
+  latencyText: "-",
+  statusText: "준비됨",
+  statusClass: "pill neutral",
+  sourceText: "캐시 경로",
+  payloadText: "선택한 상품으로 레디스 캐시 조회를 실행해 주세요.",
+  cacheStatus: null,
 };
 
 function resolveApiBase() {
@@ -120,6 +138,107 @@ function formatBytes(value) {
     return "-";
   }
   return `${value.toLocaleString("ko-KR")} bytes`;
+}
+
+function getSelectedProduct() {
+  return state.products.find((product) => product.id === state.selectedProductId) ?? null;
+}
+
+function ensureProductUi(productId) {
+  if (!state.productUi[productId]) {
+    state.productUi[productId] = {
+      direct: { ...defaultDirectView },
+      cache: { ...defaultCacheView },
+      holdExpiresAtMs: null,
+    };
+  }
+  return state.productUi[productId];
+}
+
+function buildPayloadText(payload) {
+  return JSON.stringify(
+    {
+      상품명: payload.product.name,
+      설명: payload.product.description,
+      가격: `${payload.product.price.toLocaleString()}원`,
+      재고: payload.product.stock,
+      네임스페이스: payload.product.cache_namespace,
+      이미지: payload.product.image_url,
+    },
+    null,
+    2,
+  );
+}
+
+function renderSelectedProductContext() {
+  const product = getSelectedProduct();
+  if (!product) {
+    return;
+  }
+
+  const ui = ensureProductUi(product.id);
+  nodes.selectedTitle.textContent = `${product.name} 비교`;
+  nodes.currentStock.textContent = String(product.stock);
+
+  nodes.directLatency.textContent = ui.direct.latencyText;
+  nodes.directStatus.textContent = ui.direct.statusText;
+  nodes.directStatus.className = ui.direct.statusClass;
+  nodes.directSource.textContent = ui.direct.sourceText;
+  nodes.directPayload.textContent = ui.direct.payloadText;
+
+  nodes.cacheLatency.textContent = ui.cache.latencyText;
+  nodes.cacheStatus.textContent = ui.cache.statusText;
+  nodes.cacheStatus.className = ui.cache.statusClass;
+  nodes.cacheSource.textContent = ui.cache.sourceText;
+  nodes.cachePayload.textContent = ui.cache.payloadText;
+
+  renderSelectedHoldState();
+}
+
+function renderSelectedHoldState() {
+  const product = getSelectedProduct();
+  if (!product) {
+    return;
+  }
+
+  const ui = ensureProductUi(product.id);
+  if (typeof ui.holdExpiresAtMs !== "number") {
+    nodes.holdStatus.textContent = "없음";
+    nodes.holdDetail.textContent = "선택한 상품에 설정된 캐시 만료가 없습니다.";
+    return;
+  }
+
+  const remainingMs = ui.holdExpiresAtMs - Date.now();
+  if (remainingMs <= 0) {
+    ui.holdExpiresAtMs = null;
+    if (ui.cache.cacheStatus === "hit") {
+      ui.cache.cacheStatus = "miss";
+      ui.cache.statusText = cacheStatusLabel.miss;
+      ui.cache.statusClass = "pill miss";
+    }
+    nodes.holdStatus.textContent = "만료됨";
+    nodes.holdDetail.textContent = "선택한 상품 캐시 TTL이 만료되어 다음 캐시 조회는 miss가 됩니다.";
+    return;
+  }
+
+  nodes.holdStatus.textContent = `${Math.ceil(remainingMs / 1000)}초 남음`;
+  nodes.holdDetail.textContent = `선택한 상품 캐시가 ${Math.ceil(remainingMs / 1000)}초 뒤 만료됩니다.`;
+}
+
+function startHoldTimer() {
+  if (state.holdTimer !== null) {
+    return;
+  }
+  state.holdTimer = window.setInterval(() => {
+    const hasActiveHold = Object.values(state.productUi).some(
+      (ui) => typeof ui.holdExpiresAtMs === "number" && ui.holdExpiresAtMs > Date.now(),
+    );
+    if (!hasActiveHold) {
+      window.clearInterval(state.holdTimer);
+      state.holdTimer = null;
+    }
+    renderSelectedHoldState();
+  }, 1000);
 }
 
 async function api(path, options = {}) {
@@ -329,6 +448,7 @@ async function fetchPersistenceDemoStatus({ silent = false } = {}) {
 function renderProducts() {
   nodes.productGrid.innerHTML = "";
   for (const product of state.products) {
+    ensureProductUi(product.id);
     const card = document.createElement("button");
     card.className = "product-card";
     if (product.id === state.selectedProductId) {
@@ -347,42 +467,44 @@ function renderProducts() {
     `;
     card.addEventListener("click", () => {
       state.selectedProductId = product.id;
-      nodes.selectedTitle.textContent = `${product.name} 비교`;
-      nodes.currentStock.textContent = String(product.stock);
       renderProducts();
+      renderSelectedProductContext();
     });
     nodes.productGrid.appendChild(card);
   }
 }
 
-function setMetric(prefix, payload) {
-  const latencyNode = prefix === "direct" ? nodes.directLatency : nodes.cacheLatency;
-  const statusNode = prefix === "direct" ? nodes.directStatus : nodes.cacheStatus;
-  const sourceNode = prefix === "direct" ? nodes.directSource : nodes.cacheSource;
-  const payloadNode = prefix === "direct" ? nodes.directPayload : nodes.cachePayload;
+function updateMetric(prefix, payload) {
+  const ui = ensureProductUi(payload.product.id);
+  const payloadText = buildPayloadText(payload);
+  const sourceText = `${sourceLabel[payload.source] ?? payload.source} · ${sourceLabel[payload.origin_source] ?? payload.origin_source}`;
 
-  latencyNode.textContent = `${payload.latency_ms.toFixed(1)}ms`;
-  statusNode.textContent = cacheStatusLabel[payload.cache_status] ?? payload.cache_status;
-  statusNode.className = `pill ${payload.cache_status}`;
-  sourceNode.textContent = `${sourceLabel[payload.source] ?? payload.source} · ${sourceLabel[payload.origin_source] ?? payload.origin_source}`;
-  payloadNode.textContent = JSON.stringify(
-    {
-      상품명: payload.product.name,
-      설명: payload.product.description,
-      가격: `${payload.product.price.toLocaleString()}원`,
-      재고: payload.product.stock,
-      네임스페이스: payload.product.cache_namespace,
-      이미지: payload.product.image_url,
-    },
-    null,
-    2,
-  );
-  nodes.currentStock.textContent = String(payload.product.stock);
+  if (prefix === "direct") {
+    ui.direct = {
+      latencyText: `${payload.latency_ms.toFixed(1)}ms`,
+      statusText: cacheStatusLabel[payload.cache_status] ?? payload.cache_status,
+      statusClass: `pill ${payload.cache_status}`,
+      sourceText,
+      payloadText,
+    };
+  } else {
+    ui.cache = {
+      latencyText: `${payload.latency_ms.toFixed(1)}ms`,
+      statusText: cacheStatusLabel[payload.cache_status] ?? payload.cache_status,
+      statusClass: `pill ${payload.cache_status}`,
+      sourceText,
+      payloadText,
+      cacheStatus: payload.cache_status,
+    };
+  }
 
   const known = state.products.find((item) => item.id === payload.product.id);
   if (known) {
     known.stock = payload.product.stock;
     renderProducts();
+  }
+  if (payload.product.id === state.selectedProductId) {
+    renderSelectedProductContext();
   }
 }
 
@@ -392,10 +514,9 @@ async function loadProducts() {
   nodes.originSource.textContent = sourceLabel[payload.origin_source] ?? payload.origin_source;
   if (!state.selectedProductId && payload.products.length > 0) {
     state.selectedProductId = payload.products[0].id;
-    nodes.selectedTitle.textContent = `${payload.products[0].name} 비교`;
-    nodes.currentStock.textContent = String(payload.products[0].stock);
   }
   renderProducts();
+  renderSelectedProductContext();
 }
 
 function requireSelection() {
@@ -408,13 +529,13 @@ function requireSelection() {
 async function loadDirect() {
   const productId = requireSelection();
   const payload = await api(`/store/products/${productId}/direct`);
-  setMetric("direct", payload);
+  updateMetric("direct", payload);
 }
 
 async function loadCached() {
   const productId = requireSelection();
   const payload = await api(`/store/products/${productId}/cached`);
-  setMetric("cache", payload);
+  updateMetric("cache", payload);
 }
 
 function setBenchmarkBars(directAverage, cacheAverage) {
@@ -456,26 +577,11 @@ async function reserveProduct() {
       ttl_ms: 15000,
     }),
   });
-  startHoldCountdown(payload.expires_at_ms);
+  const ui = ensureProductUi(productId);
+  ui.holdExpiresAtMs = payload.expires_at_ms;
+  startHoldTimer();
+  renderSelectedProductContext();
   await refreshState();
-}
-
-function startHoldCountdown(expiresAtMs) {
-  window.clearInterval(state.holdTimer);
-  const tick = () => {
-    const remainingMs = expiresAtMs - Date.now();
-    if (remainingMs <= 0) {
-      nodes.holdStatus.textContent = "만료됨";
-      nodes.holdDetail.textContent = "선택한 상품 캐시 TTL이 만료되어 다음 캐시 조회는 miss가 됩니다.";
-      window.clearInterval(state.holdTimer);
-      state.holdTimer = null;
-      return;
-    }
-    nodes.holdStatus.textContent = `${Math.ceil(remainingMs / 1000)}초 남음`;
-    nodes.holdDetail.textContent = `선택한 상품 캐시가 ${Math.ceil(remainingMs / 1000)}초 뒤 만료됩니다.`;
-  };
-  tick();
-  state.holdTimer = window.setInterval(tick, 1000);
 }
 
 async function purchaseProduct() {
@@ -485,6 +591,15 @@ async function purchaseProduct() {
     body: JSON.stringify({ quantity: 1 }),
   });
   nodes.currentStock.textContent = String(payload.stock);
+  const ui = ensureProductUi(productId);
+  ui.cache = {
+    ...defaultCacheView,
+    statusText: "갱신됨",
+    statusClass: "pill hit",
+    sourceText: "캐시 경로",
+    payloadText: "재고 변경으로 캐시가 갱신되었습니다. 레디스 캐시 조회를 다시 실행하면 최신 내용이 보입니다.",
+    cacheStatus: "hit",
+  };
   await loadProducts();
   await refreshState();
 }
@@ -496,6 +611,15 @@ async function restockProduct() {
     body: JSON.stringify({ quantity: 1 }),
   });
   nodes.currentStock.textContent = String(payload.stock);
+  const ui = ensureProductUi(productId);
+  ui.cache = {
+    ...defaultCacheView,
+    statusText: "갱신됨",
+    statusClass: "pill hit",
+    sourceText: "캐시 경로",
+    payloadText: "재고 변경으로 캐시가 갱신되었습니다. 레디스 캐시 조회를 다시 실행하면 최신 내용이 보입니다.",
+    cacheStatus: "hit",
+  };
   await loadProducts();
   await refreshState();
 }
@@ -503,8 +627,17 @@ async function restockProduct() {
 async function invalidateProduct() {
   const productId = requireSelection();
   await api(`/store/products/${productId}/invalidate`, { method: "POST" });
-  nodes.cacheStatus.textContent = "무효화됨";
-  nodes.cacheStatus.className = "pill miss";
+  const ui = ensureProductUi(productId);
+  ui.cache = {
+    ...defaultCacheView,
+    statusText: "무효화됨",
+    statusClass: "pill miss",
+    sourceText: "캐시 경로",
+    payloadText: "선택한 상품 캐시가 무효화되었습니다. 다음 캐시 조회는 miss가 됩니다.",
+    cacheStatus: "invalidated",
+  };
+  ui.holdExpiresAtMs = null;
+  renderSelectedProductContext();
   await refreshState();
 }
 
