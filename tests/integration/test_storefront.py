@@ -62,6 +62,8 @@ def test_storefront_purchase_invalidate_and_snapshot_flow(client: TestClient) ->
     state_payload = state.json()
     assert state_payload["snapshot_exists"] is True
     assert state_payload["snapshot_size_bytes"] > 0
+    assert state_payload["snapshot_updated_at_ms"] is not None
+    assert state_payload["aof_updated_at_ms"] is not None
 
 
 def test_storefront_reserve_creates_ttl_hold_token(client: TestClient) -> None:

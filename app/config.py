@@ -14,6 +14,7 @@ class Settings:
     aof_path: str
     aof_fsync: AppendFsyncMode
     aof_recovery_mode: RecoveryMode
+    enable_demo_crash: bool
     mongo_uri: str
     mongo_database: str
     mongo_collection: str
@@ -32,6 +33,7 @@ def get_settings() -> Settings:
         aof_recovery_mode=_parse_recovery_mode(
             os.getenv("MINI_REDIS_AOF_RECOVERY_MODE", "truncate")
         ),
+        enable_demo_crash=_parse_bool(os.getenv("MINI_REDIS_ENABLE_DEMO_CRASH", "false")),
         mongo_uri=os.getenv("MINI_REDIS_MONGO_URI", ""),
         mongo_database=os.getenv("MINI_REDIS_MONGO_DATABASE", "mini_redis_demo"),
         mongo_collection=os.getenv("MINI_REDIS_MONGO_COLLECTION", "products"),
@@ -53,3 +55,7 @@ def _parse_recovery_mode(value: str) -> RecoveryMode:
     if value not in {"strict", "truncate"}:
         raise ValueError(f"Unsupported MINI_REDIS_AOF_RECOVERY_MODE: {value}")
     return cast(RecoveryMode, value)
+
+
+def _parse_bool(value: str) -> bool:
+    return value.strip().lower() in {"1", "true", "yes", "on"}

@@ -47,6 +47,22 @@ class SnapshotResponse(BaseModel):
     path: str
 
 
+class PersistenceDemoRecordResponse(BaseModel):
+    key: str
+    namespace: str
+    exists: bool
+    value: str | None = None
+    created_at_ms: int | None = None
+    updated_at_ms: int | None = None
+    crash_enabled: bool
+
+
+class PersistenceDemoCrashResponse(BaseModel):
+    scheduled: bool
+    delay_ms: int = Field(ge=0)
+    message: str
+
+
 class HealthResponse(BaseModel):
     status: str
     service: str
@@ -113,6 +129,8 @@ class StoreStateResponse(BaseModel):
     snapshot_path: str | None = None
     snapshot_exists: bool
     snapshot_size_bytes: int = Field(ge=0)
+    snapshot_updated_at_ms: int | None = None
     aof_path: str | None = None
     aof_exists: bool
     aof_size_bytes: int = Field(ge=0)
+    aof_updated_at_ms: int | None = None

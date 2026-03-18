@@ -8,6 +8,7 @@
   --accent-blue: #3b8cff;
   --accent-green: #2ab6a5;
   --accent-gold: #f7b53b;
+  --accent-danger: #d84d4d;
   --panel-shadow: 0 24px 64px rgba(29, 25, 16, 0.12);
   --font-display: "Avenir Next", "Segoe UI", "Noto Sans KR", sans-serif;
 }
@@ -152,6 +153,11 @@ button.ghost-button {
   color: var(--ink);
   box-shadow: none;
   border: 1px solid var(--line);
+}
+
+button.danger-button {
+  background: linear-gradient(135deg, var(--accent-danger), #f06c5b);
+  box-shadow: 0 12px 28px rgba(216, 77, 77, 0.24);
 }
 
 .product-grid {
@@ -328,26 +334,66 @@ button.ghost-button {
   transition: width 220ms ease;
 }
 
-.state-items {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.75rem;
-}
-
-.state-item {
+.state-item,
+.persistence-file-card {
   padding: 0.9rem;
   border-radius: 1rem;
   background: rgba(244, 234, 217, 0.7);
 }
 
-.state-item strong {
+.state-item strong,
+.persistence-file-card strong {
   display: block;
   margin-top: 0.45rem;
   font-size: 1rem;
 }
 
+.persistence-files-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
 .event-log-shell {
   margin-top: 1rem;
+}
+
+.persistence-demo-shell {
+  margin-top: 1rem;
+  padding: 1rem;
+  border-radius: 1.2rem;
+  border: 1px solid rgba(216, 77, 77, 0.18);
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.78), rgba(255, 246, 234, 0.92)),
+    radial-gradient(circle at top right, rgba(216, 77, 77, 0.12), transparent 14rem);
+}
+
+.persistence-demo-head {
+  margin-bottom: 0;
+}
+
+.persistence-demo-shell h3 {
+  margin: 0.2rem 0 0;
+  letter-spacing: -0.03em;
+}
+
+.persistence-demo-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.mono-value {
+  font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+  font-size: 0.95rem;
+  overflow-wrap: anywhere;
+}
+
+.persistence-demo-command {
+  display: block;
+  margin-top: 0.9rem;
+  line-height: 1.5;
 }
 
 .persistence-guide {
@@ -420,7 +466,8 @@ button.ghost-button {
   .panel-head,
   .compare-grid,
   .state-grid,
-  .state-items,
+  .persistence-demo-grid,
+  .persistence-files-grid,
   .console-form {
     grid-template-columns: 1fr;
     flex-direction: column;

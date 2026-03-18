@@ -134,8 +134,8 @@ class StorefrontService:
         status = self._snapshot_status_provider()
         snapshot_path = status.get("path")
         aof_path = status.get("aof_path")
-        snapshot_exists, snapshot_size = self._file_state(snapshot_path)
-        aof_exists, aof_size = self._file_state(aof_path)
+        snapshot_exists, snapshot_size, snapshot_updated_at_ms = self._file_state(snapshot_path)
+        aof_exists, aof_size, aof_updated_at_ms = self._file_state(aof_path)
         return StoreStateResponse(
             origin_source=self._catalog.source_name,
             origin_delay_ms=self._origin_delay_ms,
@@ -143,9 +143,11 @@ class StorefrontService:
             snapshot_path=snapshot_path if isinstance(snapshot_path, str) else None,
             snapshot_exists=snapshot_exists,
             snapshot_size_bytes=snapshot_size,
+            snapshot_updated_at_ms=snapshot_updated_at_ms,
             aof_path=aof_path if isinstance(aof_path, str) else None,
             aof_exists=aof_exists,
             aof_size_bytes=aof_size,
+            aof_updated_at_ms=aof_updated_at_ms,
         )
 
     def _load_from_origin(self, product_id: str) -> ProductRecord:
@@ -215,13 +217,14 @@ class StorefrontService:
         )
 
     @staticmethod
-    def _file_state(raw_path: Any) -> tuple[bool, int]:
+    def _file_state(raw_path: Any) -> tuple[bool, int, int | None]:
         if not isinstance(raw_path, str) or not raw_path:
-            return False, 0
+            return False, 0, None
         path = Path(raw_path)
         if not path.exists():
-            return False, 0
-        return True, path.stat().st_size
+            return False, 0, None
+        stat = path.stat()
+        return True, stat.st_size, int(stat.st_mtime * 1000)
 
     @staticmethod
     def _detail_namespace(product_id: str) -> str:
