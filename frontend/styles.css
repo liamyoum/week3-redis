@@ -282,6 +282,22 @@ button.danger-button:hover {
   gap: 1rem;
 }
 
+.persistence-files-grid,
+.persistence-demo-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.persistence-files-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-bottom: 1rem;
+}
+
+.persistence-demo-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .action-panel .state-grid {
   margin-top: 0.5rem;
 }
@@ -405,6 +421,37 @@ button.danger-button:hover {
   font-size: 1rem;
 }
 
+.persistence-demo-shell {
+  margin-top: 1rem;
+  padding: 1.25rem;
+  border-radius: 1.25rem;
+  border: 1px solid rgba(239, 68, 68, 0.22);
+  background:
+    radial-gradient(circle at top right, rgba(239, 68, 68, 0.12), transparent 14rem),
+    rgba(15, 23, 42, 0.72);
+}
+
+.persistence-demo-head {
+  margin-bottom: 0;
+}
+
+.persistence-demo-shell h3 {
+  margin: 0.25rem 0 0;
+  font-size: 1.2rem;
+  letter-spacing: -0.02em;
+}
+
+.mono-value {
+  font-family: var(--font-mono);
+  overflow-wrap: anywhere;
+}
+
+.persistence-demo-command {
+  display: block;
+  margin-top: 1rem;
+  line-height: 1.6;
+}
+
 .storage-stage p {
   margin: 0.75rem 0 0;
   color: var(--text-muted);
@@ -459,6 +506,8 @@ button.danger-button:hover {
   .state-grid,
   .state-items,
   .storage-flow,
+  .persistence-files-grid,
+  .persistence-demo-grid,
   .persistence-grid {
     grid-template-columns: 1fr;
   }
