@@ -1,0 +1,1 @@
+"""Mini Redis application package."""
