@@ -47,6 +47,12 @@ class SnapshotResponse(BaseModel):
     path: str
 
 
+class CrashResponse(BaseModel):
+    status: str
+    delay_ms: int = Field(ge=0)
+    message: str
+
+
 class HealthResponse(BaseModel):
     status: str
     service: str

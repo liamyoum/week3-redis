@@ -3,6 +3,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    restart: unless-stopped
     environment:
       MINI_REDIS_APP_NAME: mini-redis demo
       MINI_REDIS_MONGO_URI: mongodb://mongo:27017
@@ -22,6 +23,7 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+    restart: unless-stopped
     ports:
       - "8080:80"
     depends_on:
@@ -29,6 +31,7 @@ services:
 
   mongo:
     image: mongo:7
+    restart: unless-stopped
     ports:
       - "27017:27017"
     volumes:

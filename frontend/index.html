@@ -1,183 +1,165 @@
 <!DOCTYPE html>
 <html lang="ko">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>미니 레디스 드롭룸</title>
-    <link rel="stylesheet" href="/styles.css" />
-  </head>
-  <body>
-    <div class="page-shell">
-      <header class="hero">
-        <div>
-          <p class="eyebrow">미니 레디스 발표 데모</p>
-          <h1>드롭룸</h1>
-          <p class="hero-copy">
-            같은 상품을 원본 DB와 Mini Redis 캐시에서 각각 읽어 응답 속도를 비교한다.
-            TTL, 무효화, 카운터, Snapshot+AOF 영속성을 한 화면에서 발표할 수 있게 구성했다.
-          </p>
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Redis Performance Lab</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+
+<body>
+  <div class="page-shell">
+    <header class="hero">
+      <div class="hero-title">
+        <span class="eyebrow">High-Performance In-Memory DB</span>
+        <h1>Redis <span>Lab</span></h1>
+      </div>
+      <div class="hero-badge">
+        <span>Current Data Source</span>
+        <strong id="origin-source">seed</strong>
+      </div>
+    </header>
+
+    <main class="layout">
+      <section class="panel catalog-panel">
+        <div class="panel-head">
+          <div>
+            <p class="eyebrow">Demo Inventory</p>
+            <h2>한정판 굿즈 카탈로그</h2>
+          </div>
+          <button id="refresh-products" class="ghost-button">목록 새로고침</button>
         </div>
-        <div class="hero-badge">
-          <span>원본 데이터 소스</span>
-          <strong id="origin-source">seed</strong>
+        <div id="product-grid" class="product-grid"></div>
+      </section>
+
+      <section class="panel compare-panel">
+        <div class="panel-head">
+          <div>
+            <p class="eyebrow">Latency Benchmark</p>
+            <h2 id="selected-title">상품을 선택해 주세요</h2>
+          </div>
+          <div class="button-row">
+            <button id="load-direct" class="ghost-button">Direct DB</button>
+            <button id="load-cached">Redis Get</button>
+            <button id="run-benchmark" class="ghost-button">5x Test</button>
+          </div>
         </div>
-      </header>
 
-      <main class="layout">
-        <section class="panel catalog-panel">
-          <div class="panel-head">
-            <div>
-              <p class="eyebrow">한정 굿즈 데모</p>
-              <h2>상품 카드</h2>
+        <div class="compare-grid">
+          <article class="metric-card direct-card">
+            <p class="metric-label">Direct DB Access</p>
+            <div class="latency" id="direct-latency">-</div>
+            <div class="status-row">
+              <span class="pill bypass" id="direct-status">BYPASS</span>
+              <span class="hint" id="direct-source">원본</span>
             </div>
-            <button id="refresh-products" class="ghost-button">새로고침</button>
-          </div>
-          <div id="product-grid" class="product-grid"></div>
-        </section>
+            <pre id="direct-payload" class="payload">Waiting for request...</pre>
+          </article>
 
-        <section class="panel compare-panel">
-          <div class="panel-head">
-            <div>
-              <p class="eyebrow">원본 조회 vs 캐시 조회</p>
-              <h2 id="selected-title">상품을 선택해 주세요</h2>
+          <article class="metric-card cache-card">
+            <p class="metric-label">Redis Cache Path</p>
+            <div class="latency highlight" id="cache-latency">-</div>
+            <div class="status-row">
+              <span class="pill neutral" id="cache-status">READY</span>
+              <span class="hint" id="cache-source">캐시</span>
             </div>
-            <div class="button-row">
-              <button id="load-direct">DB Direct</button>
-              <button id="load-cached">Redis Cache</button>
-              <button id="run-benchmark" class="ghost-button">5회 비교</button>
+            <pre id="cache-payload" class="payload">Waiting for request...</pre>
+          </article>
+        </div>
+
+        <div class="benchmark-shell">
+          <div class="benchmark-row">
+            <span class="label">DB Avg</span>
+            <div class="benchmark-bar">
+              <div id="direct-bar"></div>
             </div>
+            <strong id="direct-average">-</strong>
           </div>
-
-          <div class="compare-grid">
-            <article class="metric-card direct-card">
-              <p class="metric-label">원본 DB 직조회</p>
-              <div class="latency" id="direct-latency">-</div>
-              <div class="status-row">
-                <span class="pill neutral" id="direct-status">bypass</span>
-                <span class="hint" id="direct-source">원본</span>
-              </div>
-              <pre id="direct-payload" class="payload">아직 조회 전입니다.</pre>
-            </article>
-
-            <article class="metric-card cache-card">
-              <p class="metric-label">미니 레디스 캐시</p>
-              <div class="latency" id="cache-latency">-</div>
-              <div class="status-row">
-                <span class="pill neutral" id="cache-status">대기</span>
-                <span class="hint" id="cache-source">캐시</span>
-              </div>
-              <pre id="cache-payload" class="payload">아직 조회 전입니다.</pre>
-            </article>
-          </div>
-
-          <div class="benchmark-shell">
-            <div class="benchmark-row">
-              <span>원본 평균</span>
-              <div class="benchmark-bar"><div id="direct-bar"></div></div>
-              <strong id="direct-average">-</strong>
+          <div class="benchmark-row">
+            <span class="label">Redis Avg</span>
+            <div class="benchmark-bar">
+              <div id="cache-bar"></div>
             </div>
-            <div class="benchmark-row">
-              <span>캐시 평균</span>
-              <div class="benchmark-bar"><div id="cache-bar"></div></div>
-              <strong id="cache-average">-</strong>
-            </div>
+            <strong id="cache-average">-</strong>
           </div>
-        </section>
+        </div>
+      </section>
 
-        <section class="panel action-panel">
-          <div class="panel-head">
-            <div>
-              <p class="eyebrow">핵심 기능 시연</p>
-              <h2>TTL · 카운터 · 무효화</h2>
-            </div>
+      <section class="panel action-panel">
+        <div class="panel-head">
+          <div>
+            <p class="eyebrow">Redis Logic</p>
+            <h2>Advanced Operations</h2>
           </div>
-          <div class="button-row wrap">
-            <button id="reserve-product">지금부터 15초 홀드</button>
-            <button id="purchase-product">재고 1 차감</button>
-            <button id="invalidate-product">캐시 무효화</button>
-            <button id="save-snapshot" class="ghost-button">스냅샷 저장</button>
-          </div>
-          <div class="state-grid">
-            <article class="mini-card">
-              <p class="mini-label">TTL 홀드</p>
-              <strong id="hold-status">없음</strong>
-              <span id="hold-detail" class="hint">버튼을 누른 시점부터 15초 뒤 자동 만료됩니다.</span>
-            </article>
-            <article class="mini-card">
-              <p class="mini-label">영속성 상태</p>
-              <strong id="snapshot-status">스냅샷 미확인</strong>
-              <span id="aof-status" class="hint">AOF 미확인</span>
-            </article>
-            <article class="mini-card">
-              <p class="mini-label">현재 재고</p>
-              <strong id="current-stock">-</strong>
-              <span class="hint">재고 감소는 Redis counter로 처리합니다.</span>
-            </article>
-          </div>
-        </section>
+        </div>
+        <div class="button-row wrap">
+          <button id="reserve-product" class="ghost-button">TTL Hold (15s)</button>
+          <button id="purchase-product">Incr/Decr Stock</button>
+          <button id="invalidate-product" class="danger-button">Purge Cache</button>
+          <button id="save-snapshot" class="ghost-button">BGSAVE</button>
+          <button id="restart-server" class="danger-button ghost-danger-button">Chaos Monkey</button>
+        </div>
+        <div class="state-grid">
+          <article class="mini-card">
+            <p class="mini-label">TTL Hold</p>
+            <strong id="hold-status">None</strong>
+            <span id="hold-detail" class="hint">No active session</span>
+          </article>
+          <article class="mini-card">
+            <p class="mini-label">Persistence</p>
+            <strong id="snapshot-status">Check Status</strong>
+            <span id="aof-status" class="hint">AOF Disabled</span>
+          </article>
+          <article class="mini-card stock-card">
+            <p class="mini-label">Real-time Stock</p>
+            <strong id="current-stock">-</strong>
+            <span class="hint">Atomic Counter</span>
+          </article>
+        </div>
+      </section>
 
-        <section class="panel state-panel">
-          <div class="panel-head">
-            <div>
-              <p class="eyebrow">하이브리드 영속성</p>
-              <h2>Snapshot + AOF</h2>
-            </div>
-            <button id="refresh-state" class="ghost-button">상태 새로고침</button>
+      <section class="panel state-panel">
+        <div class="panel-head">
+          <div>
+            <p class="eyebrow">Storage Flow</p>
+            <h2>Snapshot + AOF</h2>
           </div>
-          <div id="state-items" class="state-items"></div>
-          <div class="persistence-guide">
-            <h3>발표 시연 순서</h3>
-            <ol>
-              <li>상품 하나를 선택하고 `DB Direct` 와 `Redis Cache` 를 각각 눌러 속도 차이를 보여준다.</li>
-              <li>`스냅샷 저장` 을 눌러 현재 메모리 상태를 파일로 고정한다.</li>
-              <li>`재고 1 차감` 또는 `캐시 무효화` 를 눌러 스냅샷 이후 변경분을 만든다.</li>
-              <li>아래 AOF 크기가 늘어난 것을 확인한다.</li>
-              <li>서버를 재시작한 뒤 같은 상품을 다시 조회해 복구를 보여준다.</li>
-            </ol>
-          </div>
-          <div class="event-log-shell">
-            <h3>이벤트 로그</h3>
-            <ul id="event-log" class="event-log"></ul>
-          </div>
-        </section>
+          <button id="refresh-state" class="ghost-button">Sync State</button>
+        </div>
+        <div id="storage-flow" class="storage-flow"></div>
+        <div id="state-items" class="state-items"></div>
+        <div class="event-log-shell">
+          <h3>Event Stream</h3>
+          <ul id="event-log" class="event-log"></ul>
+        </div>
+      </section>
 
-        <section class="panel console-panel">
-          <div class="panel-head">
-            <div>
-              <p class="eyebrow">미니 레디스 콘솔</p>
-              <h2>Raw KV 조작</h2>
-            </div>
+      <section class="panel console-panel">
+        <div class="panel-head">
+          <div>
+            <p class="eyebrow">Raw KV Access</p>
+            <h2>Redis CLI Emulator</h2>
           </div>
-          <form id="console-form" class="console-form">
-            <label>
-              키
-              <input id="console-key" value="demo:key" />
-            </label>
-            <label>
-              네임스페이스
-              <input id="console-namespace" value="demo-console" />
-            </label>
-            <label>
-              값
-              <input id="console-value" value="hello-mini-redis" />
-            </label>
-            <label>
-              TTL(ms)
-              <input id="console-ttl" value="5000" />
-            </label>
-          </form>
-          <div class="button-row wrap">
-            <button data-action="set" class="console-button">SET</button>
-            <button data-action="get" class="console-button">GET</button>
-            <button data-action="delete" class="console-button">DEL</button>
-            <button data-action="incr" class="console-button">INCR</button>
-            <button data-action="decr" class="console-button">DECR</button>
-          </div>
-          <pre id="console-output" class="payload">콘솔 응답이 여기에 표시됩니다.</pre>
-        </section>
-      </main>
-    </div>
+        </div>
+        <form id="console-form" class="console-form">
+          <label>Key <input id="console-key" value="demo:key" /></label>
+          <label>Namespace <input id="console-namespace" value="demo-console" /></label>
+          <label>Value <input id="console-value" value="hello-redis" /></label>
+          <label>TTL(ms) <input id="console-ttl" value="5000" /></label>
+        </form>
+        <div class="button-row wrap">
+          <button data-action="set" class="console-button">SET</button>
+          <button data-action="get" class="console-button ghost-button">GET</button>
+          <button data-action="delete" class="console-button danger-button">DEL</button>
+          <button data-action="incr" class="console-button ghost-button">INCR</button>
+          <button data-action="decr" class="console-button ghost-button">DECR</button>
+        </div>
+        <pre id="console-output" class="payload">Ready for commands...</pre>
+      </section>
+    </main>
+  </div>
+  <script src="/app.js" defer></script>
+</body>
 
-    <script src="/app.js" defer></script>
-  </body>
 </html>

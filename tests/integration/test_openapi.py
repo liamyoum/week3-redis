@@ -16,6 +16,8 @@ def test_openapi_contains_seed_routes_and_models(client: TestClient) -> None:
     assert "/kv/{key}/decr" in paths
     assert "/namespaces/{namespace}/invalidate" in paths
     assert "/admin/snapshot" in paths
+    assert "/admin/crash" in paths
+    assert "/admin/restart" in paths
     assert "/store/products" in paths
     assert "/store/products/{product_id}/direct" in paths
     assert "/store/products/{product_id}/cached" in paths
@@ -38,6 +40,7 @@ def test_openapi_contains_seed_routes_and_models(client: TestClient) -> None:
     assert "CounterResponse" in components
     assert "InvalidateResponse" in components
     assert "SnapshotResponse" in components
+    assert "CrashResponse" in components
     assert "ProductCardResponse" in components
     assert "ProductListResponse" in components
     assert "ProductDetailResponse" in components

@@ -54,6 +54,7 @@ const nodes = {
   snapshotStatus: document.getElementById("snapshot-status"),
   aofStatus: document.getElementById("aof-status"),
   currentStock: document.getElementById("current-stock"),
+  storageFlow: document.getElementById("storage-flow"),
   stateItems: document.getElementById("state-items"),
   eventLog: document.getElementById("event-log"),
   consoleKey: document.getElementById("console-key"),
@@ -62,6 +63,12 @@ const nodes = {
   consoleTtl: document.getElementById("console-ttl"),
   consoleOutput: document.getElementById("console-output"),
 };
+
+// ... (이후 기존의 모든 function들: api, sleep, waitForApiRecovery, pushEvent, renderEvents, 
+// renderProducts, setMetric, loadProducts, requireSelection, loadDirect, loadCached, 
+// setBenchmarkBars, runBenchmark, reserveProduct, startHoldCountdown, purchaseProduct, 
+// invalidateProduct, saveSnapshot, restartServer, refreshState, consoleAction, attachEvents, 
+// wrapAction, bootstrap 로직 그대로 삽입)
 
 async function api(path, options = {}) {
   const response = await fetch(`${apiBase}${path}`, {
@@ -78,6 +85,26 @@ async function api(path, options = {}) {
     throw new Error(payload?.detail ?? `Request failed: ${response.status}`);
   }
   return payload;
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+async function waitForApiRecovery(timeoutMs = 20000) {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    try {
+      const response = await fetch(`${apiBase}/health`);
+      if (response.ok) {
+        return true;
+      }
+    } catch {
+      // 재시작 중에는 연결 실패가 자연스럽다.
+    }
+    await sleep(800);
+  }
+  throw new Error("API 서버가 제한 시간 안에 다시 올라오지 않았습니다.");
 }
 
 function pushEvent(title, detail) {
@@ -288,6 +315,23 @@ async function saveSnapshot() {
   pushEvent("스냅샷 저장", `${payload.path} 생성 후 이후 변경분은 AOF에 기록`);
 }
 
+async function restartServer() {
+  const confirmed = window.confirm(
+    "API 서버를 강제로 내렸다가 Docker로 다시 올립니다. 복구 시연용으로 실행할까요?",
+  );
+  if (!confirmed) {
+    return;
+  }
+  const payload = await api("/admin/restart", { method: "POST" });
+  nodes.consoleOutput.textContent = `${payload.message}\n잠시 후 자동 복구를 확인합니다...`;
+  pushEvent("재시작 예약", `${payload.delay_ms}ms 뒤 API가 내려가고 자동 재기동을 기다립니다.`);
+  await sleep(payload.delay_ms + 400);
+  await waitForApiRecovery();
+  await refreshState();
+  nodes.consoleOutput.textContent = "API 서버가 다시 연결되었습니다. 스냅샷과 AOF 복구 상태를 확인하세요.";
+  pushEvent("재시작 완료", "Docker restart 정책으로 API 서버가 다시 올라왔습니다.");
+}
+
 async function refreshState() {
   const payload = await api("/store/state");
   nodes.originSource.textContent = sourceLabel[payload.origin_source] ?? payload.origin_source;
@@ -297,6 +341,47 @@ async function refreshState() {
   nodes.aofStatus.textContent = payload.aof_exists
     ? `AOF ${payload.aof_size_bytes} bytes · 스냅샷 이후 변경분`
     : "AOF 없음";
+
+  const flowItems = [
+    {
+      label: "실시간 저장",
+      title: "RAM Store",
+      chip: "항상 활성",
+      chipClass: "active",
+      detail: "조회, TTL, 카운터, 무효화는 먼저 메모리에서 바로 처리됩니다.",
+    },
+    {
+      label: "전체 저장본",
+      title: payload.snapshot_exists ? "Snapshot 저장됨" : "Snapshot 대기",
+      chip: payload.snapshot_exists ? `${payload.snapshot_size_bytes} bytes` : "미생성",
+      chipClass: payload.snapshot_exists ? "active" : "pending",
+      detail: payload.snapshot_exists
+        ? "현재 메모리 상태를 통째로 저장한 복구 기준점입니다."
+        : "스냅샷 저장 버튼을 누르면 현재 메모리 상태가 파일로 고정됩니다.",
+    },
+    {
+      label: "변경 로그",
+      title: payload.aof_exists ? "AOF 기록 중" : "AOF 대기",
+      chip: payload.aof_exists ? `${payload.aof_size_bytes} bytes` : "변경 없음",
+      chipClass: payload.aof_exists ? "active" : "pending",
+      detail: payload.aof_exists
+        ? "스냅샷 이후 변경된 연산만 추가로 쌓아 재시작 시 replay합니다."
+        : "스냅샷 이후 새 변경이 생기면 이 영역에 로그가 쌓입니다.",
+    },
+  ];
+
+  nodes.storageFlow.innerHTML = flowItems
+    .map(
+      (item) => `
+        <article class="storage-stage">
+          <span class="hint">${item.label}</span>
+          <strong>${item.title}</strong>
+          <span class="storage-chip ${item.chipClass}">${item.chip}</span>
+          <p>${item.detail}</p>
+        </article>
+      `,
+    )
+    .join("");
 
   const items = [
     ["원본 데이터", sourceLabel[payload.origin_source] ?? payload.origin_source],
@@ -363,6 +448,7 @@ function attachEvents() {
   document.getElementById("purchase-product").addEventListener("click", () => wrapAction(purchaseProduct));
   document.getElementById("invalidate-product").addEventListener("click", () => wrapAction(invalidateProduct));
   document.getElementById("save-snapshot").addEventListener("click", () => wrapAction(saveSnapshot));
+  document.getElementById("restart-server").addEventListener("click", () => wrapAction(restartServer));
   document.getElementById("refresh-state").addEventListener("click", () => wrapAction(refreshState));
   document.querySelectorAll(".console-button").forEach((button) => {
     button.addEventListener("click", () => wrapAction(() => consoleAction(button.dataset.action)));
