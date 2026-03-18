@@ -121,13 +121,68 @@
       <section class="panel state-panel">
         <div class="panel-head">
           <div>
-            <p class="eyebrow">Storage Flow</p>
+            <p class="eyebrow">스냅샷 상태</p>
             <h2>Snapshot + AOF</h2>
           </div>
           <button id="refresh-state" class="ghost-button">Sync State</button>
         </div>
-        <div id="storage-flow" class="storage-flow"></div>
-        <div id="state-items" class="state-items"></div>
+        <div class="persistence-files-grid">
+          <article class="state-item persistence-file-card">
+            <span class="hint">Snapshot 파일</span>
+            <strong id="snapshot-file-status">확인 중</strong>
+            <span id="snapshot-file-updated" class="hint">마지막 저장 시각을 불러오는 중입니다.</span>
+            <span id="snapshot-file-detail" class="hint mono-value">파일 상태를 불러오는 중입니다.</span>
+          </article>
+          <article class="state-item persistence-file-card">
+            <span class="hint">AOF 파일</span>
+            <strong id="aof-file-status">확인 중</strong>
+            <span id="aof-file-updated" class="hint">마지막 기록 시각을 불러오는 중입니다.</span>
+            <span id="aof-file-detail" class="hint mono-value">파일 상태를 불러오는 중입니다.</span>
+          </article>
+          <article class="state-item persistence-file-card">
+            <span class="hint">복구 흐름</span>
+            <strong id="persistence-flow-title">Snapshot -> AOF Replay</strong>
+            <span id="persistence-flow-detail" class="hint">
+              시작 시 Snapshot을 먼저 불러오고, 그 뒤 AOF 변경분을 replay 해 최종 상태를 복원합니다.
+            </span>
+            <span id="persistence-flow-note" class="hint mono-value">
+              종료 시 Snapshot 저장 · 비정상 종료 시 AOF가 마지막 변경분을 살립니다.
+            </span>
+          </article>
+        </div>
+        <div class="persistence-demo-shell">
+          <div class="panel-head persistence-demo-head">
+            <div>
+              <p class="eyebrow">비정상 종료 복구 데모</p>
+              <h3>AOF로 살아남는 마지막 쓰기</h3>
+            </div>
+            <div class="button-row wrap">
+              <button id="write-persistence-demo">복구용 데이터 생성</button>
+              <button id="crash-api" class="danger-button">API 강제 종료</button>
+              <button id="check-persistence-demo" class="ghost-button">복구 확인</button>
+            </div>
+          </div>
+          <div class="persistence-demo-grid">
+            <article class="state-item">
+              <span class="hint">현재 상태</span>
+              <strong id="persistence-demo-status">기록 없음</strong>
+              <span id="persistence-demo-detail" class="hint">아직 복구 데모 데이터를 쓰지 않았습니다.</span>
+            </article>
+            <article class="state-item">
+              <span class="hint">마지막으로 쓴 값</span>
+              <strong id="persistence-demo-last-written" class="mono-value">-</strong>
+              <span id="persistence-demo-last-written-at" class="hint">브라우저에 저장된 기준값</span>
+            </article>
+            <article class="state-item">
+              <span class="hint">서버에서 읽은 현재 값</span>
+              <strong id="persistence-demo-current-value" class="mono-value">-</strong>
+              <span id="persistence-demo-current-updated" class="hint">API 재조회 결과</span>
+            </article>
+          </div>
+          <p class="hint persistence-demo-command">
+            강제 종료 뒤에는 터미널에서 `docker compose up -d api` 를 실행하면 이 카드가 자동으로 복구를 감지합니다.
+          </p>
+        </div>
         <div class="persistence-grid">
           <article class="metric-card persistence-card">
             <div class="panel-head compact">
@@ -149,10 +204,6 @@
             </div>
             <pre id="aof-payload" class="payload persistence-payload">AOF 이벤트 없음</pre>
           </article>
-        </div>
-        <div class="event-log-shell">
-          <h3>Event Stream</h3>
-          <ul id="event-log" class="event-log"></ul>
         </div>
       </section>
     </main>

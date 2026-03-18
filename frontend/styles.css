@@ -128,8 +128,7 @@ input {
   margin-bottom: 1rem;
 }
 
-.panel h2,
-.event-log-shell h3 {
+.panel h2 {
   margin: 0;
   font-size: 1.5rem;
   letter-spacing: -0.02em;
@@ -250,10 +249,20 @@ button.danger-button:hover {
 
 .compare-grid,
 .state-grid,
-.state-items {
+.persistence-files-grid,
+.persistence-demo-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 1rem;
+}
+
+.persistence-files-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-bottom: 1rem;
+}
+
+.persistence-demo-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .persistence-grid {
@@ -265,8 +274,7 @@ button.danger-button:hover {
 
 .metric-card,
 .mini-card,
-.state-item,
-.storage-stage {
+.state-item {
   background: var(--bg-card);
   border-radius: 1.25rem;
   border: 1px solid var(--border);
@@ -360,14 +368,6 @@ button.danger-button:hover {
   transition: width 0.6s ease;
 }
 
-.storage-flow {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 1rem;
-  margin-bottom: 1rem;
-}
-
-.storage-stage strong,
 .state-item strong,
 .mini-card strong {
   display: block;
@@ -375,45 +375,35 @@ button.danger-button:hover {
   font-size: 1rem;
 }
 
-.storage-stage p {
-  margin: 0.75rem 0 0;
-  color: var(--text-muted);
-  font-size: 0.92rem;
-}
-
-.storage-chip {
-  display: inline-flex;
-  margin-top: 0.85rem;
-  font-size: 0.7rem;
-  padding: 0.2rem 0.5rem;
-  border-radius: 4px;
-  background: var(--accent-blue);
-  color: #000;
-  font-weight: 800;
-}
-
-.storage-chip.pending {
-  background: rgba(148, 163, 184, 0.35);
-  color: #fff;
-}
-
-.event-log-shell {
+.persistence-demo-shell {
   margin-top: 1rem;
+  padding: 1.25rem;
+  border-radius: 1.25rem;
+  border: 1px solid rgba(239, 68, 68, 0.22);
+  background:
+    radial-gradient(circle at top right, rgba(239, 68, 68, 0.12), transparent 14rem),
+    rgba(15, 23, 42, 0.72);
 }
 
-.event-log {
-  list-style: none;
-  padding: 0;
-  margin: 0.75rem 0 0;
-  display: grid;
-  gap: 0.55rem;
+.persistence-demo-head {
+  margin-bottom: 0;
 }
 
-.event-log li {
-  padding: 0.85rem 0.95rem;
-  border-radius: 0.95rem;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid var(--border);
+.persistence-demo-shell h3 {
+  margin: 0.25rem 0 0;
+  font-size: 1.2rem;
+  letter-spacing: -0.02em;
+}
+
+.mono-value {
+  font-family: var(--font-mono);
+  overflow-wrap: anywhere;
+}
+
+.persistence-demo-command {
+  display: block;
+  margin-top: 1rem;
+  line-height: 1.6;
 }
 
 @media (max-width: 1024px) {
@@ -427,8 +417,8 @@ button.danger-button:hover {
 
   .compare-grid,
   .state-grid,
-  .state-items,
-  .storage-flow,
+  .persistence-files-grid,
+  .persistence-demo-grid,
   .persistence-grid {
     grid-template-columns: 1fr;
   }
