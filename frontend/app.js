@@ -18,7 +18,7 @@ const sourceLabel = {
   cache: "캐시 경로",
   seed: "시드 데이터",
   "seed-fallback": "시드 데이터",
-  mongo: "MongoDB",
+  mongo: "몽고DB",
 };
 
 function resolveApiBase() {
@@ -82,7 +82,9 @@ function formatTimestamp(ms) {
   if (typeof ms !== "number" || !Number.isFinite(ms)) {
     return "-";
   }
-  return new Date(ms).toLocaleString("ko-KR", { hour12: false });
+  const date = new Date(ms);
+  const base = date.toLocaleString("ko-KR", { hour12: false });
+  return `${base}.${String(date.getMilliseconds()).padStart(3, "0")}`;
 }
 
 function formatBytes(value) {
@@ -138,10 +140,8 @@ function renderProducts() {
     card.innerHTML = `
       <img src="${product.image_url}" alt="${product.name}" />
       <div class="content">
-        <span class="badge">${product.badge}</span>
         <div class="emoji">${product.emoji}</div>
         <h3>${product.name}</h3>
-        <p>${product.tagline}</p>
         <div class="product-meta">
           <strong>${product.price.toLocaleString()}원</strong>
           <span>재고 ${product.stock}</span>
@@ -330,24 +330,28 @@ async function saveSnapshot() {
 async function refreshState() {
   const payload = await api("/store/state");
   nodes.originSource.textContent = sourceLabel[payload.origin_source] ?? payload.origin_source;
+  const lastAofEvent = payload.aof_events.length
+    ? payload.aof_events[payload.aof_events.length - 1]
+    : null;
+  const lastAofLabel = lastAofEvent?.op ?? "없음";
   nodes.snapshotStatus.textContent = payload.snapshot_exists
     ? `최근 스냅샷 ${formatTimestamp(payload.snapshot_updated_at_ms)}`
     : "스냅샷 없음";
   nodes.aofStatus.textContent = payload.aof_exists
-    ? `AOF ${payload.aof_events.length}건 · ${formatTimestamp(payload.aof_updated_at_ms)}`
+    ? `AOF ${payload.aof_events.length}건 · 마지막 ${lastAofLabel} · ${formatTimestamp(payload.aof_updated_at_ms)}`
     : "AOF 없음";
 
   const flowItems = [
     {
       label: "실시간 저장",
-      title: "RAM Store",
+      title: "메모리 저장소",
       chip: "항상 활성",
       chipClass: "active",
       detail: "조회, TTL, 카운터, 무효화는 먼저 메모리에서 바로 처리됩니다.",
     },
     {
       label: "전체 저장본",
-      title: payload.snapshot_exists ? "Snapshot 저장됨" : "Snapshot 대기",
+      title: payload.snapshot_exists ? "스냅샷 저장됨" : "스냅샷 대기",
       chip: payload.snapshot_exists ? formatBytes(payload.snapshot_size_bytes) : "미생성",
       chipClass: payload.snapshot_exists ? "active" : "pending",
       detail: payload.snapshot_exists
@@ -382,9 +386,9 @@ async function refreshState() {
     ["원본 데이터", sourceLabel[payload.origin_source] ?? payload.origin_source],
     ["원본 지연", `${payload.origin_delay_ms} ms`],
     ["상품 수", String(payload.product_count)],
-    ["Snapshot 경로", payload.snapshot_path ?? "-"],
+    ["스냅샷 경로", payload.snapshot_path ?? "-"],
     ["AOF 경로", payload.aof_path ?? "-"],
-    ["Snapshot 수정 시각", formatTimestamp(payload.snapshot_updated_at_ms)],
+    ["스냅샷 수정 시각", formatTimestamp(payload.snapshot_updated_at_ms)],
     ["AOF 수정 시각", formatTimestamp(payload.aof_updated_at_ms)],
   ];
 

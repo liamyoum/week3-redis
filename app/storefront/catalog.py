@@ -172,9 +172,15 @@ class MongoProductCatalog:
         seed_ids = [product.id for product in self._seed_products]
         self._collection.delete_many({"id": {"$nin": seed_ids}})
         for product in self._seed_products:
+            document = product.to_document()
+            stock = document.pop("stock")
+            existing = self._collection.find_one({"id": product.id}, {"_id": False, "stock": True})
+            update_fields = dict(document)
+            if existing is None or "stock" not in existing:
+                update_fields["stock"] = stock
             self._collection.update_one(
                 {"id": product.id},
-                {"$set": product.to_document()},
+                {"$set": update_fields},
                 upsert=True,
             )
 

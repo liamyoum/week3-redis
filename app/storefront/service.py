@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from app.domain.contracts import StoreProtocol
+from app.domain.models import StoreRecord
 from app.domain.schemas import (
     ProductCardResponse,
     ProductDetailResponse,
@@ -18,7 +19,6 @@ from app.domain.schemas import (
 from app.persistence.aof import AofRepository
 from app.storefront.catalog import ProductCatalogProtocol, ProductRecord
 
-INVENTORY_NAMESPACE = "storefront-inventory"
 DETAIL_KEY = "detail"
 
 
@@ -48,7 +48,7 @@ class StorefrontService:
         product = self._load_from_origin(product_id)
         latency_ms = (time.perf_counter() - started) * 1000
         return ProductDetailResponse(
-            product=self._to_origin_product_card(product),
+            product=self._to_product_card(product),
             source="direct",
             origin_source=self._catalog.source_name,
             cache_status="bypass",
@@ -76,11 +76,7 @@ class StorefrontService:
                 )
 
         product = self._load_from_origin(product_id)
-        self._store.set(
-            key=DETAIL_KEY,
-            value_str=json.dumps(product.to_cache_payload(), separators=(",", ":")),
-            namespace=namespace,
-        )
+        self._write_detail_cache(product)
         latency_ms = (time.perf_counter() - started) * 1000
         return ProductDetailResponse(
             product=self._to_product_card(product),
@@ -91,20 +87,10 @@ class StorefrontService:
         )
 
     def reserve_product(self, product_id: str, session_id: str, ttl_ms: int) -> ReserveResponse:
+        product = self._load_from_origin(product_id)
         namespace = self._detail_namespace(product_id)
-        cache_record = self._store.get(DETAIL_KEY, namespace=namespace)
-        if cache_record is None:
-            product = self._load_from_origin(product_id)
-            payload = json.dumps(product.to_cache_payload(), separators=(",", ":"))
-        else:
-            payload = cache_record.value_str
         hold_key = f"{namespace}:{DETAIL_KEY}"
-        record = self._store.set(
-            key=DETAIL_KEY,
-            value_str=payload,
-            ttl_ms=ttl_ms,
-            namespace=namespace,
-        )
+        record = self._write_detail_cache(product, ttl_ms=ttl_ms)
         return ReserveResponse(
             product_id=product_id,
             session_id=session_id,
@@ -115,16 +101,12 @@ class StorefrontService:
 
     def purchase_product(self, product_id: str, quantity: int) -> PurchaseResponse:
         product = self._require_product(product_id)
-        current_stock = self._ensure_inventory(product)
+        current_stock = product.stock
         if quantity > current_stock:
             raise ValueError("Not enough stock remaining for this drop.")
-        remaining_stock = self._store.decr(
-            key=self._inventory_key(product_id),
-            amount=quantity,
-            namespace=INVENTORY_NAMESPACE,
-        )
-        self._sync_origin_stock(product_id, remaining_stock)
-        self._store.delete(DETAIL_KEY, namespace=self._detail_namespace(product_id))
+        remaining_stock = current_stock - quantity
+        updated_product = self._sync_origin_stock(product_id, remaining_stock)
+        self._write_detail_cache(updated_product)
         return PurchaseResponse(
             product_id=product_id,
             quantity=quantity,
@@ -133,14 +115,9 @@ class StorefrontService:
 
     def restock_product(self, product_id: str, quantity: int) -> PurchaseResponse:
         product = self._require_product(product_id)
-        self._ensure_inventory(product)
-        next_stock = self._store.incr(
-            key=self._inventory_key(product_id),
-            amount=quantity,
-            namespace=INVENTORY_NAMESPACE,
-        )
-        self._sync_origin_stock(product_id, next_stock)
-        self._store.delete(DETAIL_KEY, namespace=self._detail_namespace(product_id))
+        next_stock = product.stock + quantity
+        updated_product = self._sync_origin_stock(product_id, next_stock)
+        self._write_detail_cache(updated_product)
         return PurchaseResponse(
             product_id=product_id,
             quantity=quantity,
@@ -190,22 +167,6 @@ class StorefrontService:
         time.sleep(self._origin_delay_ms / 1000)
 
     def _to_product_card(self, product: ProductRecord) -> ProductCardResponse:
-        stock = self._ensure_inventory(product)
-        return ProductCardResponse(
-            id=product.id,
-            name=product.name,
-            tagline=product.tagline,
-            description=product.description,
-            image_url=product.image_url,
-            price=product.price,
-            stock=stock,
-            accent_color=product.accent_color,
-            badge=product.badge,
-            emoji=product.emoji,
-            cache_namespace=self._detail_namespace(product.id),
-        )
-
-    def _to_origin_product_card(self, product: ProductRecord) -> ProductCardResponse:
         return ProductCardResponse(
             id=product.id,
             name=product.name,
@@ -219,26 +180,6 @@ class StorefrontService:
             emoji=product.emoji,
             cache_namespace=self._detail_namespace(product.id),
         )
-
-    def _ensure_inventory(self, product: ProductRecord) -> int:
-        key = self._inventory_key(product.id)
-        record = self._store.get(key, namespace=INVENTORY_NAMESPACE)
-        if record is None:
-            self._store.set(
-                key=key,
-                value_str=str(product.stock),
-                namespace=INVENTORY_NAMESPACE,
-            )
-            return product.stock
-        try:
-            return int(record.value_str)
-        except ValueError:
-            self._store.set(
-                key=key,
-                value_str=str(product.stock),
-                namespace=INVENTORY_NAMESPACE,
-            )
-            return product.stock
 
     def _product_from_cache_payload(self, product_id: str, payload: Any) -> ProductRecord:
         if not isinstance(payload, dict):
@@ -256,8 +197,35 @@ class StorefrontService:
             emoji=str(payload["emoji"]),
         )
 
-    def _sync_origin_stock(self, product_id: str, stock: int) -> None:
-        self._catalog.update_stock(product_id, stock)
+    def _sync_origin_stock(self, product_id: str, stock: int) -> ProductRecord:
+        updated = self._catalog.update_stock(product_id, stock)
+        if updated is not None:
+            return updated
+        return self._require_product(product_id)
+
+    def _write_detail_cache(
+        self,
+        product: ProductRecord,
+        ttl_ms: int | None = None,
+    ) -> StoreRecord:
+        namespace = self._detail_namespace(product.id)
+        effective_ttl_ms = ttl_ms
+        if effective_ttl_ms is None:
+            cached_record = self._store.get(DETAIL_KEY, namespace=namespace)
+            if cached_record is not None and cached_record.expires_at_ms is not None:
+                remaining_ttl_ms = cached_record.expires_at_ms - self._default_now_ms()
+                if remaining_ttl_ms > 0:
+                    effective_ttl_ms = remaining_ttl_ms
+        return self._store.set(
+            key=DETAIL_KEY,
+            value_str=json.dumps(product.to_cache_payload(), separators=(",", ":")),
+            ttl_ms=effective_ttl_ms,
+            namespace=namespace,
+        )
+
+    @staticmethod
+    def _default_now_ms() -> int:
+        return time.time_ns() // 1_000_000
 
     @staticmethod
     def _file_state(raw_path: Any) -> tuple[bool, int, int | None]:
@@ -291,7 +259,3 @@ class StorefrontService:
     @staticmethod
     def _detail_namespace(product_id: str) -> str:
         return f"storefront-product:{product_id}"
-
-    @staticmethod
-    def _inventory_key(product_id: str) -> str:
-        return f"inventory:{product_id}"

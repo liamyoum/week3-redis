@@ -83,6 +83,18 @@ def test_storefront_direct_reads_origin_stock_after_purchase_and_restock(
     assert after_restock["product"]["stock"] == initial["product"]["stock"] + 1
 
 
+def test_storefront_direct_and_cached_share_same_stock_source(client: TestClient) -> None:
+    client.get("/store/products/sunset-lamp/cached")
+    client.post("/store/products/sunset-lamp/purchase", json={"quantity": 2})
+
+    direct = client.get("/store/products/sunset-lamp/direct")
+    cached = client.get("/store/products/sunset-lamp/cached")
+
+    assert direct.status_code == 200
+    assert cached.status_code == 200
+    assert direct.json()["product"]["stock"] == cached.json()["product"]["stock"]
+
+
 def test_storefront_reserve_creates_ttl_hold_token(client: TestClient) -> None:
     response = client.post(
         "/store/products/cream-speaker/reserve",

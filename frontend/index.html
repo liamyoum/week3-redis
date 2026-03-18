@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Redis Performance Lab</title>
+  <title>미니 레디스 성능 실험실</title>
   <link rel="stylesheet" href="/styles.css" />
 </head>
 
@@ -12,11 +12,11 @@
   <div class="page-shell">
     <header class="hero">
       <div class="hero-title">
-        <span class="eyebrow">High-Performance In-Memory DB</span>
-        <h1>Redis <span>Lab</span></h1>
+        <span class="eyebrow">고성능 인메모리 데이터 저장소</span>
+        <h1>레디스 <span>실험실</span></h1>
       </div>
       <div class="hero-badge">
-        <span>Current Data Source</span>
+        <span>현재 원본 데이터 소스</span>
         <strong id="origin-source">seed</strong>
       </div>
     </header>
@@ -25,7 +25,7 @@
       <section class="panel catalog-panel">
         <div class="panel-head">
           <div>
-            <p class="eyebrow">Demo Inventory</p>
+            <p class="eyebrow">데모 상품</p>
             <h2>한정판 굿즈 카탈로그</h2>
           </div>
         </div>
@@ -35,48 +35,48 @@
       <section class="panel compare-panel">
         <div class="panel-head">
           <div>
-            <p class="eyebrow">Latency Benchmark</p>
+            <p class="eyebrow">응답 속도 비교</p>
             <h2 id="selected-title">상품을 선택해 주세요</h2>
           </div>
           <div class="button-row">
-            <button id="load-direct" class="ghost-button">Direct DB</button>
-            <button id="load-cached">Redis Get</button>
-            <button id="run-benchmark" class="ghost-button">5x Test</button>
+            <button id="load-direct" class="ghost-button">원본 DB 조회</button>
+            <button id="load-cached">레디스 캐시 조회</button>
+            <button id="run-benchmark" class="ghost-button">5회 비교</button>
           </div>
         </div>
 
         <div class="compare-grid">
           <article class="metric-card direct-card">
-            <p class="metric-label">Direct DB Access</p>
+            <p class="metric-label">원본 DB 직조회</p>
             <div class="latency" id="direct-latency">-</div>
             <div class="status-row">
-              <span class="pill bypass" id="direct-status">BYPASS</span>
+              <span class="pill bypass" id="direct-status">우회</span>
               <span class="hint" id="direct-source">원본</span>
             </div>
-            <pre id="direct-payload" class="payload">Waiting for request...</pre>
+            <pre id="direct-payload" class="payload">요청을 기다리는 중입니다...</pre>
           </article>
 
           <article class="metric-card cache-card">
-            <p class="metric-label">Redis Cache Path</p>
+            <p class="metric-label">레디스 캐시 경로</p>
             <div class="latency highlight" id="cache-latency">-</div>
             <div class="status-row">
-              <span class="pill neutral" id="cache-status">READY</span>
+              <span class="pill neutral" id="cache-status">준비됨</span>
               <span class="hint" id="cache-source">캐시</span>
             </div>
-            <pre id="cache-payload" class="payload">Waiting for request...</pre>
+            <pre id="cache-payload" class="payload">요청을 기다리는 중입니다...</pre>
           </article>
         </div>
 
         <div class="benchmark-shell">
           <div class="benchmark-row">
-            <span class="label">DB Avg</span>
+            <span class="label">DB 평균</span>
             <div class="benchmark-bar">
               <div id="direct-bar"></div>
             </div>
             <strong id="direct-average">-</strong>
           </div>
           <div class="benchmark-row">
-            <span class="label">Redis Avg</span>
+            <span class="label">레디스 평균</span>
             <div class="benchmark-bar">
               <div id="cache-bar"></div>
             </div>
@@ -88,32 +88,36 @@
       <section class="panel action-panel">
         <div class="panel-head">
           <div>
-            <p class="eyebrow">Redis Logic</p>
-            <h2>Advanced Operations</h2>
+            <p class="eyebrow">레디스 동작</p>
+            <h2>핵심 기능 데모</h2>
           </div>
         </div>
-        <div class="button-row wrap">
-          <button id="reserve-product" class="ghost-button">15초 후 캐시 만료</button>
-          <button id="purchase-product">재고 1 차감</button>
-          <button id="restock-product">재고 1 증가</button>
-          <button id="invalidate-product" class="danger-button">캐시 무효화</button>
-          <button id="save-snapshot" class="ghost-button">현재 상태 스냅샷 저장</button>
+        <div class="action-rows">
+          <div class="button-row action-row">
+            <button id="purchase-product">재고 1 차감</button>
+            <button id="restock-product">재고 1 증가</button>
+            <button id="invalidate-product" class="danger-button">캐시 무효화</button>
+          </div>
+          <div class="button-row action-row">
+            <button id="reserve-product" class="ghost-button">15초 후 캐시 만료</button>
+            <button id="save-snapshot" class="ghost-button">현재 상태 스냅샷 저장</button>
+          </div>
         </div>
         <div class="state-grid">
           <article class="mini-card">
-            <p class="mini-label">TTL Hold</p>
-            <strong id="hold-status">None</strong>
-            <span id="hold-detail" class="hint">No active session</span>
+            <p class="mini-label">TTL 상태</p>
+            <strong id="hold-status">없음</strong>
+            <span id="hold-detail" class="hint">활성화된 만료 세션이 없습니다</span>
           </article>
           <article class="mini-card">
-            <p class="mini-label">Persistence</p>
-            <strong id="snapshot-status">Check Status</strong>
-            <span id="aof-status" class="hint">AOF Disabled</span>
+            <p class="mini-label">영속성 상태</p>
+            <strong id="snapshot-status">상태 확인 필요</strong>
+            <span id="aof-status" class="hint">AOF 없음</span>
           </article>
           <article class="mini-card stock-card">
-            <p class="mini-label">Real-time Stock</p>
+            <p class="mini-label">실시간 재고</p>
             <strong id="current-stock">-</strong>
-            <span class="hint">Atomic Counter</span>
+            <span class="hint">현재 상품 기준 재고 수량</span>
           </article>
         </div>
       </section>
@@ -121,10 +125,10 @@
       <section class="panel state-panel">
         <div class="panel-head">
           <div>
-            <p class="eyebrow">Storage Flow</p>
+            <p class="eyebrow">저장 흐름</p>
             <h2>Snapshot + AOF</h2>
           </div>
-          <button id="refresh-state" class="ghost-button">Sync State</button>
+          <button id="refresh-state" class="ghost-button">상태 새로고침</button>
         </div>
         <div id="storage-flow" class="storage-flow"></div>
         <div id="state-items" class="state-items"></div>
@@ -132,8 +136,8 @@
           <article class="metric-card persistence-card">
             <div class="panel-head compact">
               <div>
-                <p class="eyebrow">Persistence File</p>
-                <h3>Snapshot JSON</h3>
+                <p class="eyebrow">영속성 파일</p>
+                <h3>스냅샷 JSON</h3>
               </div>
               <span id="snapshot-meta" class="hint">저장된 스냅샷 없음</span>
             </div>
@@ -142,8 +146,8 @@
           <article class="metric-card persistence-card">
             <div class="panel-head compact">
               <div>
-                <p class="eyebrow">Post Snapshot Writes</p>
-                <h3>AOF Events</h3>
+                <p class="eyebrow">스냅샷 이후 변경</p>
+                <h3>AOF 이벤트</h3>
               </div>
               <span id="aof-meta" class="hint">AOF 이벤트 없음</span>
             </div>
@@ -151,7 +155,7 @@
           </article>
         </div>
         <div class="event-log-shell">
-          <h3>Event Stream</h3>
+          <h3>이벤트 로그</h3>
           <ul id="event-log" class="event-log"></ul>
         </div>
       </section>
