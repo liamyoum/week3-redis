@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
 
-from pymongo import MongoClient
+from pymongo import MongoClient, ReturnDocument
 from pymongo.collection import Collection
 from pymongo.errors import PyMongoError
 
@@ -55,9 +55,7 @@ class ProductRecord:
         }
 
     def to_cache_payload(self) -> dict[str, Any]:
-        payload = self.to_document()
-        payload.pop("stock")
-        return payload
+        return self.to_document()
 
 
 class ProductCatalogProtocol(Protocol):
@@ -69,6 +67,9 @@ class ProductCatalogProtocol(Protocol):
         ...
 
     def get_product(self, product_id: str) -> ProductRecord | None:
+        ...
+
+    def update_stock(self, product_id: str, stock: int) -> ProductRecord | None:
         ...
 
     def close(self) -> None:
@@ -97,6 +98,25 @@ class SeedProductCatalog:
 
     def get_product(self, product_id: str) -> ProductRecord | None:
         return self._products.get(product_id)
+
+    def update_stock(self, product_id: str, stock: int) -> ProductRecord | None:
+        product = self._products.get(product_id)
+        if product is None:
+            return None
+        updated = ProductRecord(
+            id=product.id,
+            name=product.name,
+            tagline=product.tagline,
+            description=product.description,
+            image_url=product.image_url,
+            price=product.price,
+            stock=stock,
+            accent_color=product.accent_color,
+            badge=product.badge,
+            emoji=product.emoji,
+        )
+        self._products[product_id] = updated
+        return updated
 
     def close(self) -> None:
         return None
@@ -128,6 +148,17 @@ class MongoProductCatalog:
 
     def get_product(self, product_id: str) -> ProductRecord | None:
         document = self._collection.find_one({"id": product_id}, {"_id": False})
+        if document is None:
+            return None
+        return ProductRecord.from_document(document)
+
+    def update_stock(self, product_id: str, stock: int) -> ProductRecord | None:
+        document = self._collection.find_one_and_update(
+            {"id": product_id},
+            {"$set": {"stock": stock}},
+            projection={"_id": False},
+            return_document=ReturnDocument.AFTER,
+        )
         if document is None:
             return None
         return ProductRecord.from_document(document)

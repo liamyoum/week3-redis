@@ -32,7 +32,7 @@ class StorefrontService:
         store: StoreProtocol,
         catalog: ProductCatalogProtocol,
         snapshot_status_provider: Callable[[], dict[str, Any]],
-        origin_delay_ms: int = 120,
+        origin_delay_ms: int = 0,
     ) -> None:
         self._store = store
         self._catalog = catalog
@@ -48,7 +48,7 @@ class StorefrontService:
         product = self._load_from_origin(product_id)
         latency_ms = (time.perf_counter() - started) * 1000
         return ProductDetailResponse(
-            product=self._to_product_card(product),
+            product=self._to_origin_product_card(product),
             source="direct",
             origin_source=self._catalog.source_name,
             cache_status="bypass",
@@ -123,6 +123,8 @@ class StorefrontService:
             amount=quantity,
             namespace=INVENTORY_NAMESPACE,
         )
+        self._sync_origin_stock(product_id, remaining_stock)
+        self._store.delete(DETAIL_KEY, namespace=self._detail_namespace(product_id))
         return PurchaseResponse(
             product_id=product_id,
             quantity=quantity,
@@ -137,6 +139,8 @@ class StorefrontService:
             amount=quantity,
             namespace=INVENTORY_NAMESPACE,
         )
+        self._sync_origin_stock(product_id, next_stock)
+        self._store.delete(DETAIL_KEY, namespace=self._detail_namespace(product_id))
         return PurchaseResponse(
             product_id=product_id,
             quantity=quantity,
@@ -199,6 +203,21 @@ class StorefrontService:
             cache_namespace=self._detail_namespace(product.id),
         )
 
+    def _to_origin_product_card(self, product: ProductRecord) -> ProductCardResponse:
+        return ProductCardResponse(
+            id=product.id,
+            name=product.name,
+            tagline=product.tagline,
+            description=product.description,
+            image_url=product.image_url,
+            price=product.price,
+            stock=product.stock,
+            accent_color=product.accent_color,
+            badge=product.badge,
+            emoji=product.emoji,
+            cache_namespace=self._detail_namespace(product.id),
+        )
+
     def _ensure_inventory(self, product: ProductRecord) -> int:
         key = self._inventory_key(product.id)
         record = self._store.get(key, namespace=INVENTORY_NAMESPACE)
@@ -222,7 +241,6 @@ class StorefrontService:
     def _product_from_cache_payload(self, product_id: str, payload: Any) -> ProductRecord:
         if not isinstance(payload, dict):
             raise ValueError("Invalid cache payload.")
-        product = self._require_product(product_id)
         return ProductRecord(
             id=product_id,
             name=str(payload["name"]),
@@ -230,11 +248,14 @@ class StorefrontService:
             description=str(payload["description"]),
             image_url=str(payload["image_url"]),
             price=int(payload["price"]),
-            stock=product.stock,
+            stock=int(payload["stock"]),
             accent_color=str(payload["accent_color"]),
             badge=str(payload["badge"]),
             emoji=str(payload["emoji"]),
         )
+
+    def _sync_origin_stock(self, product_id: str, stock: int) -> None:
+        self._catalog.update_stock(product_id, stock)
 
     @staticmethod
     def _file_state(raw_path: Any) -> tuple[bool, int]:

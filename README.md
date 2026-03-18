@@ -122,5 +122,5 @@ make test
 ## Notes
 
 - MongoDB가 연결되지 않으면 앱은 자동으로 seed 상품 카탈로그로 fallback 한다.
-- storefront direct 경로에는 발표 안정성을 위해 작은 고정 지연이 들어간다.
+- storefront direct 경로는 Mongo 원본 카탈로그를 직접 조회하고, cached hit 경로는 Redis 캐시 payload만 사용한다.
 - Mini Redis 내부 값은 문자열 기반이며, 상품 상세 캐시는 JSON 문자열로 직렬화해 저장한다.

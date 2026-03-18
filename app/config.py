@@ -39,7 +39,7 @@ def get_settings() -> Settings:
             "MINI_REDIS_STOREFRONT_SEED_PATH",
             "app/storefront/seed_products.json",
         ),
-        storefront_origin_delay_ms=int(os.getenv("MINI_REDIS_STOREFRONT_ORIGIN_DELAY_MS", "140")),
+        storefront_origin_delay_ms=int(os.getenv("MINI_REDIS_STOREFRONT_ORIGIN_DELAY_MS", "0")),
     )
 
 

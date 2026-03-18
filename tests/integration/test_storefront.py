@@ -29,11 +29,11 @@ def test_storefront_direct_and_cached_paths_show_latency_and_hit_status(client: 
 
     assert direct_payload["source"] == "direct"
     assert direct_payload["cache_status"] == "bypass"
-    assert direct_payload["latency_ms"] >= 100
+    assert direct_payload["latency_ms"] >= 0
 
     assert first_cached_payload["source"] == "cache"
     assert first_cached_payload["cache_status"] == "miss"
-    assert first_cached_payload["latency_ms"] >= 100
+    assert first_cached_payload["latency_ms"] >= 0
 
     assert second_cached_payload["cache_status"] == "hit"
     assert second_cached_payload["latency_ms"] >= 0
@@ -64,6 +64,23 @@ def test_storefront_purchase_invalidate_and_snapshot_flow(client: TestClient) ->
     state_payload = state.json()
     assert state_payload["snapshot_exists"] is True
     assert state_payload["snapshot_size_bytes"] > 0
+
+
+def test_storefront_direct_reads_origin_stock_after_purchase_and_restock(
+    client: TestClient,
+) -> None:
+    initial = client.get("/store/products/sunset-lamp/direct").json()
+
+    purchase = client.post("/store/products/sunset-lamp/purchase", json={"quantity": 2})
+    after_purchase = client.get("/store/products/sunset-lamp/direct").json()
+
+    restock = client.post("/store/products/sunset-lamp/restock", json={"quantity": 3})
+    after_restock = client.get("/store/products/sunset-lamp/direct").json()
+
+    assert purchase.status_code == 200
+    assert restock.status_code == 200
+    assert after_purchase["product"]["stock"] == initial["product"]["stock"] - 2
+    assert after_restock["product"]["stock"] == initial["product"]["stock"] + 1
 
 
 def test_storefront_reserve_creates_ttl_hold_token(client: TestClient) -> None:

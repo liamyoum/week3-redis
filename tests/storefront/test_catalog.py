@@ -17,3 +17,22 @@ def test_product_record_falls_back_to_default_image_url() -> None:
     )
 
     assert product.image_url == "https://picsum.photos/seed/legacy-product/900/700"
+
+
+def test_product_record_cache_payload_keeps_stock() -> None:
+    product = ProductRecord(
+        id="stocked-product",
+        name="Stocked",
+        tagline="ready",
+        description="cache payload should stay self-contained",
+        image_url="https://example.com/item.png",
+        price=10,
+        stock=7,
+        accent_color="#ffffff",
+        badge="badge",
+        emoji="📦",
+    )
+
+    payload = product.to_cache_payload()
+
+    assert payload["stock"] == 7
