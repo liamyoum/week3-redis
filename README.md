@@ -64,9 +64,17 @@ the benchmark script, and 발표용 검증 정리 문서화.
 
 - Snapshot file path is configured with `MINI_REDIS_SNAPSHOT_PATH`
 - Default snapshot file is `data/snapshot.json`
+- Incremental AOF path is configured with `MINI_REDIS_AOF_PATH`
+- Default AOF file is `data/appendonly.aof.jsonl`
+- AOF flush policy is configured with `MINI_REDIS_AOF_FSYNC`
+- Supported flush modes are `always`, `everysec`, `no`
+- AOF recovery policy is configured with `MINI_REDIS_AOF_RECOVERY_MODE`
+- Supported recovery modes are `strict`, `truncate`
 - Snapshot persistence lives under `app/persistence`
 - App startup loads the snapshot only when `app.state.store` is configured
+- App startup replays AOF entries after snapshot restore
 - App shutdown exports the current store snapshot back to disk
+- Snapshot save rewrites the AOF so only post-snapshot mutations accumulate
 - Writes use a temporary file plus atomic replace so partial writes do not
   corrupt the main snapshot file
 
@@ -79,6 +87,7 @@ point:
   before the FastAPI lifespan starts
 - Persistence will call `store.import_snapshot(...)` on startup when a snapshot
   exists
+- Persistence will replay post-snapshot AOF mutations on startup
 - Persistence will call `store.export_snapshot()` on shutdown
 
 This keeps the implementation isolated to `app/persistence` and one small hook

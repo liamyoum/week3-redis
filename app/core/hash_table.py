@@ -14,11 +14,9 @@ DEFAULT_MAX_LOAD_FACTOR = 0.75
 
 def fnv1a_64(key: str) -> int:
     hash_value = FNV_64_OFFSET_BASIS
-
     for byte in key.encode("utf-8"):
         hash_value ^= byte
         hash_value = (hash_value * FNV_64_PRIME) & 0xFFFFFFFFFFFFFFFF
-
     return hash_value
 
 
@@ -65,7 +63,9 @@ class HashTable(Generic[ValueT]):
 
     def get(self, key: str) -> ValueT | None:
         node = self._find_node(key)
-        return None if node is None else node.value
+        if node is None:
+            return None
+        return node.value
 
     def delete(self, key: str) -> bool:
         index = self._bucket_index(key)
@@ -78,10 +78,8 @@ class HashTable(Generic[ValueT]):
                     self._buckets[index] = node.next
                 else:
                     previous.next = node.next
-
                 self._size -= 1
                 return True
-
             previous = node
             node = node.next
 
@@ -96,12 +94,10 @@ class HashTable(Generic[ValueT]):
     def _find_node(self, key: str) -> _Node[ValueT] | None:
         index = self._bucket_index(key)
         node = self._buckets[index]
-
         while node is not None:
             if node.key == key:
                 return node
             node = node.next
-
         return None
 
     def _bucket_index(self, key: str) -> int:
@@ -114,7 +110,6 @@ class HashTable(Generic[ValueT]):
         old_items = list(self._iter_items())
         self._buckets = [None] * (len(self._buckets) * 2)
         self._size = 0
-
         for key, value in old_items:
             self.put(key, value)
 
@@ -122,5 +117,5 @@ class HashTable(Generic[ValueT]):
         for bucket in self._buckets:
             node = bucket
             while node is not None:
-                yield (node.key, node.value)
+                yield node.key, node.value
                 node = node.next

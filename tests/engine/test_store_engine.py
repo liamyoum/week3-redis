@@ -277,3 +277,35 @@ def test_import_snapshot_clears_previous_state_with_manual_payload() -> None:
     assert imported is not None
     assert imported.value_str == "42"
     assert imported.namespace_version == 2
+
+
+def test_store_engine_emits_aof_style_mutation_events() -> None:
+    events: list[dict[str, object]] = []
+    clock = FakeClock(100)
+    table = FakeHashTable()
+    engine = StoreEngine(
+        table=table,
+        now_ms=clock.now_ms,
+        mutation_logger=events.append,
+    )
+
+    engine.set("alpha", "1")
+    clock.advance(1)
+    engine.incr("alpha", amount=2)
+    clock.advance(1)
+    assert engine.delete("alpha") is True
+    clock.advance(1)
+    assert engine.invalidate_namespace("team") == 1
+
+    assert [event["op"] for event in events] == [
+        "upsert",
+        "upsert",
+        "delete",
+        "invalidate",
+    ]
+    assert [event["seq"] for event in events] == [1, 2, 3, 4]
+    record = events[1]["record"]
+    assert isinstance(record, dict)
+    assert record["value_str"] == "3"
+    assert events[2]["key"] == "alpha"
+    assert events[3]["version"] == 1
