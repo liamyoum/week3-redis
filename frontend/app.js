@@ -746,10 +746,8 @@ function attachEvents() {
   document.getElementById("restock-product").addEventListener("click", () => wrapAction(restockProduct));
   document.getElementById("invalidate-product").addEventListener("click", () => wrapAction(invalidateProduct));
   document.getElementById("save-snapshot").addEventListener("click", () => wrapAction(saveSnapshot));
-  document.getElementById("refresh-state").addEventListener("click", () => wrapAction(refreshPersistencePanel));
   document.getElementById("write-persistence-demo").addEventListener("click", () => wrapAction(writePersistenceDemo, showPersistenceDemoError));
   document.getElementById("crash-api").addEventListener("click", () => wrapAction(crashApi, showPersistenceDemoError));
-  document.getElementById("check-persistence-demo").addEventListener("click", () => wrapAction(checkPersistenceDemo, showPersistenceDemoError));
 }
 
 async function wrapAction(fn, onError = null) {
