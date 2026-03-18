@@ -1,8 +1,7 @@
 import threading
 import time
 from collections.abc import Callable
-from typing import Any
-from typing import Literal
+from typing import Any, Literal
 
 from app.domain.contracts import HashTableProtocol
 from app.domain.models import SnapshotEntry, SnapshotPayload, StoreRecord

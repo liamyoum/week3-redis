@@ -303,6 +303,8 @@ def test_store_engine_emits_aof_style_mutation_events() -> None:
         "delete",
         "invalidate",
     ]
-    assert events[1]["record"]["value_str"] == "3"
+    record = events[1]["record"]
+    assert isinstance(record, dict)
+    assert record["value_str"] == "3"
     assert events[2]["key"] == "alpha"
     assert events[3]["version"] == 1
