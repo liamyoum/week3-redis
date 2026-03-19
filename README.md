@@ -1,49 +1,63 @@
 # week3-redis
 
-Mini Redis team project with a presentation-ready storefront demo.
+직접 구현한 Mini Redis를 FastAPI로 노출하고, 이를 상품 드롭 데모 서비스에 연결해
+캐시 성능과 영속성을 함께 보여주는 팀 프로젝트입니다.
 
-## Project Overview
+## 핵심 목표
 
-이 저장소는 직접 구현한 Mini Redis를 FastAPI API로 노출하고, 이를 `한정 굿즈 드롭`
-웹서비스에 연결해 캐시의 가치와 영속성을 직관적으로 보여주는 데모를 포함한다.
+- 원본 데이터(MongoDB 또는 seed JSON)와 Mini Redis 캐시의 응답 차이를 비교한다.
+- TTL, 카운터, 네임스페이스 무효화가 실제 서비스 동작으로 이어지는 모습을 보여준다.
+- Snapshot + AOF 하이브리드 영속성으로 서버 재시작 후에도 상태를 복구한다.
 
-핵심 메시지는 아래 3가지다.
+## 프로젝트 구조
 
-- 같은 상품을 반복 조회할 때 Mongo 원본보다 Mini Redis 캐시가 빠르다.
-- TTL, counter, invalidate가 실제 서비스 동작으로 연결된다.
-- snapshot + AOF로 서버 재시작 후에도 상태를 복구할 수 있다.
+- `app/core`
+  커스텀 hash table 구현
+- `app/engine`
+  Redis 핵심 동작
+  `SET/GET/DEL`, `INCR/DECR`, TTL, namespace invalidation
+- `app/persistence`
+  Snapshot + AOF 영속성 계층
+- `app/storefront`
+  상품 카탈로그와 드롭 데모 서비스 로직
+- `app/api`
+  FastAPI 라우터
+- `frontend`
+  발표용 정적 UI
+- `data`
+  snapshot / AOF 파일 저장 위치
 
-## Architecture
+## 런타임 구성
 
-- `app/core`: custom hash table
-- `app/engine`: TTL, invalidate, counter semantics
-- `app/persistence`: snapshot + AOF persistence
-- `app/storefront`: Mongo/seed 상품 카탈로그와 데모 서비스 로직
-- `app/api`: FastAPI routers
-- `frontend`: 정적 발표용 UI
+- `Frontend`
+  브라우저에서 direct 조회, cache 조회, persistence 상태를 시각적으로 확인
+- `FastAPI API`
+  storefront API, core Redis API, admin API 제공
+- `MongoDB`
+  원본 상품 데이터 저장소
+- `Mini Redis`
+  상품 상세 캐시, 재고 카운터, TTL 홀드, invalidate, snapshot/AOF 복구 담당
 
-런타임 구성은 아래와 같다.
+## 빠른 실행
 
-- `MongoDB`: 원본 상품 데이터 저장
-- `Mini Redis`: 상품 상세 캐시, 재고 카운터, TTL 홀드, invalidate, snapshot/AOF
-- `Frontend`: direct vs cache 비교, persistence 상태, raw KV console
-
-## Run
-
-로컬 백엔드만 실행:
+### 1. 로컬 백엔드만 실행
 
 ```bash
 make install
 make run
 ```
 
-발표용 전체 스택 실행:
+접속:
+
+- API docs: `http://127.0.0.1:8000/docs`
+
+### 2. 발표용 전체 스택 실행
 
 ```bash
 make docker-up
 ```
 
-접속 주소:
+접속:
 
 - Frontend: `http://127.0.0.1:8080`
 - API docs: `http://127.0.0.1:8000/docs`
@@ -54,19 +68,28 @@ make docker-up
 make docker-down
 ```
 
-## Demo Flow
+## 데모에서 보여주는 기능
 
-### Storefront
+### Storefront 시나리오
 
 - `GET /store/products`
+  상품 목록 조회
 - `GET /store/products/{product_id}/direct`
+  원본 데이터 직접 조회
 - `GET /store/products/{product_id}/cached`
+  Mini Redis 캐시 경유 조회
 - `POST /store/products/{product_id}/reserve`
+  TTL 홀드 생성
 - `POST /store/products/{product_id}/purchase`
+  재고 감소
+- `POST /store/products/{product_id}/restock`
+  재고 증가
 - `POST /store/products/{product_id}/invalidate`
+  캐시 무효화
 - `GET /store/state`
+  snapshot/AOF 상태와 현재 persistence 정보 조회
 
-### Core Redis APIs
+### Core Redis API
 
 - `PUT /kv/{key}`
 - `GET /kv/{key}`
@@ -76,26 +99,54 @@ make docker-down
 - `POST /namespaces/{namespace}/invalidate`
 - `POST /admin/snapshot`
 
-## What To Show In The Presentation
+### Persistence Demo API
+
+- `GET /admin/persistence-demo`
+  persistence 데모용 레코드 상태 확인
+- `POST /admin/persistence-demo/write`
+  crash 전에 남겨둘 값을 Mini Redis에 기록
+- `POST /admin/persistence-demo/crash`
+  강제 종료 시연용 엔드포인트
+
+## 발표 추천 흐름
 
 1. 상품 하나를 선택하고 `DB Direct` 와 `Redis Cache` 를 각각 조회한다.
-2. 같은 상품을 다시 조회해 `miss -> hit` 전환과 응답시간 차이를 보여준다.
-3. `15초 홀드` 버튼으로 TTL countdown을 보여준다.
-4. `재고 1 차감` 버튼으로 counter 기반 재고 감소를 보여준다.
-5. `캐시 무효화` 버튼으로 다음 cached 요청이 다시 miss가 되는 것을 보여준다.
-6. `Snapshot 저장` 후 `data/snapshot.json`, `data/appendonly.aof.jsonl` 파일 상태를 확인한다.
-7. 서버 재시작 후 상태가 복구되는 것을 확인한다.
-8. 하단 `Mini Redis Console` 로 raw `SET/GET/DEL/INCR/DECR` 도 시연한다.
+2. 같은 상품을 다시 조회해서 `miss -> hit` 전환과 응답 시간 차이를 보여준다.
+3. `15초 홀드`로 TTL 동작을 보여준다.
+4. `재고 차감`으로 counter 기반 상태 변경을 보여준다.
+5. `캐시 무효화` 후 다음 cached 요청이 다시 miss가 되는 것을 보여준다.
+6. `BGSAVE` 버튼 또는 `/admin/snapshot`으로 snapshot 파일을 만든다.
+7. 상태 패널에서 `snapshot.json`과 `appendonly.aof.jsonl` 변화를 확인한다.
+8. persistence demo write 후 crash/restart를 시연하고 복구 상태를 확인한다.
+9. 필요하면 하단 콘솔로 raw `SET/GET/DEL/INCR/DECR`도 보여준다.
 
-## Benchmark
+## 영속성 방식
 
-기본 벤치는 storefront direct/cache 기준으로 동작한다.
+이 프로젝트는 Snapshot + AOF 하이브리드 영속성을 사용합니다.
+
+- Snapshot
+  현재 Mini Redis 메모리 상태 전체를 파일로 저장
+- AOF
+  snapshot 이후에 발생한 변경 연산만 순차 기록
+- startup
+  `snapshot load -> AOF replay`
+- shutdown
+  `snapshot save -> post-snapshot AOF rewrite`
+
+파일 위치:
+
+- Snapshot: `data/snapshot.json`
+- AOF: `data/appendonly.aof.jsonl`
+
+## 벤치마크
+
+storefront direct/cache 기준:
 
 ```bash
 python3 scripts/bench.py --base-url http://127.0.0.1:8000 --requests 20
 ```
 
-기존 synthetic demo endpoint 기준으로도 비교할 수 있다.
+synthetic demo endpoint 기준:
 
 ```bash
 python3 scripts/bench.py \
@@ -104,7 +155,7 @@ python3 scripts/bench.py \
   --requests 20
 ```
 
-## Quality Checks
+## 품질 확인
 
 ```bash
 make lint
@@ -112,15 +163,8 @@ make typecheck
 make test
 ```
 
-## Persistence
+## 참고
 
-- Snapshot path: `data/snapshot.json`
-- AOF path: `data/appendonly.aof.jsonl`
-- startup: snapshot load -> AOF replay
-- shutdown: snapshot save -> post-snapshot AOF rewrite
-
-## Notes
-
-- MongoDB가 연결되지 않으면 앱은 자동으로 seed 상품 카탈로그로 fallback 한다.
-- storefront direct 경로는 Mongo 원본 카탈로그를 직접 조회하고, cached hit 경로는 Redis 캐시 payload만 사용한다.
-- Mini Redis 내부 값은 문자열 기반이며, 상품 상세 캐시는 JSON 문자열로 직렬화해 저장한다.
+- MongoDB 연결이 안 되면 seed 상품 카탈로그로 자동 fallback 합니다.
+- direct 경로는 원본 데이터를 읽고, cached hit 경로는 Mini Redis payload만 사용합니다.
+- Mini Redis 내부 값은 문자열 기반이며, 상품 상세 캐시는 JSON 문자열로 직렬화해 저장합니다.
