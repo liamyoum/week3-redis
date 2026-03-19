@@ -108,18 +108,6 @@ make docker-down
 - `POST /admin/persistence-demo/crash`
   강제 종료 시연용 엔드포인트
 
-## 발표 추천 흐름
-
-1. 상품 하나를 선택하고 `DB Direct` 와 `Redis Cache` 를 각각 조회한다.
-2. 같은 상품을 다시 조회해서 `miss -> hit` 전환과 응답 시간 차이를 보여준다.
-3. `15초 홀드`로 TTL 동작을 보여준다.
-4. `재고 차감`으로 counter 기반 상태 변경을 보여준다.
-5. `캐시 무효화` 후 다음 cached 요청이 다시 miss가 되는 것을 보여준다.
-6. `BGSAVE` 버튼 또는 `/admin/snapshot`으로 snapshot 파일을 만든다.
-7. 상태 패널에서 `snapshot.json`과 `appendonly.aof.jsonl` 변화를 확인한다.
-8. persistence demo write 후 crash/restart를 시연하고 복구 상태를 확인한다.
-9. 필요하면 하단 콘솔로 raw `SET/GET/DEL/INCR/DECR`도 보여준다.
-
 ## 영속성 방식
 
 이 프로젝트는 Snapshot + AOF 하이브리드 영속성을 사용합니다.
